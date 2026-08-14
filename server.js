@@ -12,6 +12,11 @@ const store = require('./lib/store');
 const { HealthTracker } = require('./lib/health');
 const { AutomationEngine } = require('./lib/automation');
 const { handleV3Route } = require('./lib/v3-routes');
+const mccMod = require('./lib/mcc-mod');
+const { createAvatarService } = require('./lib/avatar');
+
+// 正版玩家头像服务（Mojang API 代理，解决 CSP 拦截外部头像源的问题）
+const avatarService = createAvatarService();
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const MAX_BODY_BYTES = 1 * 1024 * 1024; // 1 MiB
@@ -254,27 +259,25 @@ function sanitizeName(name) {
   return cleaned || 'bot';
 }
 
-function buildMatchesIni() {
-  return [
+/** 生成 matches.ini（自动接受传送规则，trigger 为可配置正则，兼容各服务器插件提示文本）。 */
+function buildMatchesIni(pattern) {
+  const rules = String(pattern || '').trim() ? [String(pattern).trim()] : [
+    '请求传送到你|wants to teleport to you|requests to teleport to you|invites you to teleport to them'
+  ];
+  const lines = [
     '# MCC AutoRespond 自动接受传送规则（可在实例目录的 matches.ini 中自行修改）',
-    '# 匹配到 tpa / tphere 请求时自动发送 /tpaccept 接受传送',
-    '',
-    '[Match]',
-    'match=请求传送到你',
-    'action=send /tpaccept',
-    'cooldown=5',
-    '',
-    '[Match]',
-    'match=wants to teleport to you',
-    'action=send /tpaccept',
-    'cooldown=5',
-    '',
-    '[Match]',
-    'match=requests to teleport to you',
-    'action=send /tpaccept',
-    'cooldown=5',
+    '# match 为正则表达式，匹配到传送请求时自动发送 /tpaccept 接受传送',
+    '# 不同服务器插件提示文本不同，可在面板「设置」中修改「传送请求正则」',
     ''
-  ].join('\n');
+  ];
+  for (const rule of rules) {
+    lines.push('[Match]');
+    lines.push('match=' + rule);
+    lines.push('action=send /tpaccept');
+    lines.push('cooldown=5');
+    lines.push('');
+  }
+  return lines.join('\n');
 }
 
 function replaceAccountLine(ini, accountType, login) {
@@ -356,7 +359,7 @@ function initTemplateFromContainer(containerName, sourcePath) {
 }
 
 async function createMcsmInstance(mcsm, body, panelConfig) {
-  const { daemonId, name, serverIp, serverPort, accountType, accountLogin, autoAcceptTpa } = body;
+  const { daemonId, name, serverIp, serverPort, accountType, accountLogin, autoAcceptTpa, tpaRegex } = body;
   if (!daemonId || !name || !serverIp || !accountLogin) {
     return fail('缺少参数：daemonId / name / serverIp / accountLogin 不能为空', 400);
   }
@@ -457,15 +460,26 @@ async function createMcsmInstance(mcsm, body, panelConfig) {
     await new Promise((resolve) => setTimeout(resolve, 3000));
   }
 
+  // 4.5 自动接受传送（tpa）：新版 MCC 原生方案 RemoteControl + ChatFormat 正则
+  //     正则按服务器插件提示文本可配置（body.tpaRegex），默认兼容常见中英文提示
+  let finalTpaRegex = '';
+  if (autoAcceptTpa) {
+    finalTpaRegex = String(body.tpaRegex || mccMod.defaultTeleportRegex()).replace(/["\r\n]/g, '');
+    ini = mccMod.setKey(ini, 'ChatFormat', 'TeleportRequest', '"' + finalTpaRegex + '"');
+    ini = mccMod.setKey(ini, 'ChatBot.RemoteControl', 'Enabled', 'true');
+    ini = mccMod.setKey(ini, 'ChatBot.RemoteControl', 'AutoTpaccept', 'true');
+    ini = mccMod.setKey(ini, 'ChatBot.RemoteControl', 'AutoTpaccept_Everyone', 'false');
+  }
+
   // 5. 写入新实例自己的 MinecraftClient.ini（覆盖复制来的模板配置）
   const writeR = await mcsm.request('PUT', '/api/files/', { daemonId, uuid: newUuid }, { target: 'MinecraftClient.ini', text: ini });
   if (writeR.status !== 200) return fail('写入 MCC 配置失败: ' + (writeR.error || writeR.status), writeR.status || 500);
 
-  // 6. 写入 matches.ini（自动接取传送）
+  // 6. 写入 matches.ini（自动接取传送，AutoRespond 兜底方案）
   if (autoAcceptTpa) {
     const touchM = await mcsm.request('POST', '/api/files/touch', { daemonId, uuid: newUuid }, { target: 'matches.ini' });
     if (touchM.status !== 200) return fail('创建 matches.ini 失败: ' + (touchM.error || touchM.status), touchM.status || 500);
-    const mwR = await mcsm.request('PUT', '/api/files/', { daemonId, uuid: newUuid }, { target: 'matches.ini', text: buildMatchesIni() });
+    const mwR = await mcsm.request('PUT', '/api/files/', { daemonId, uuid: newUuid }, { target: 'matches.ini', text: buildMatchesIni(finalTpaRegex) });
     if (mwR.status !== 200) return fail('写入 matches.ini 失败: ' + (mwR.error || mwR.status), mwR.status || 500);
   }
 
@@ -483,6 +497,25 @@ function stripAnsiLog(s) {
 
 // 游戏名缓存（uuid -> {name, time}），日志很少变，缓存 10 分钟
 const usernameCache = new Map();
+
+// 实例名缓存（daemonId::uuid -> {name, time}），操作日志显示实例名用，缓存 10 分钟
+const instanceNameCache = new Map();
+
+/** 获取 MCSM 实例名（config.nickname），失败返回空字符串。 */
+async function getInstanceName(mcsm, daemonId, uuid) {
+  const key = String(daemonId) + '::' + String(uuid);
+  const cached = instanceNameCache.get(key);
+  if (cached && Date.now() - cached.time < 600000) return cached.name;
+  let name = '';
+  try {
+    const r = await mcsm.request('GET', '/api/instance', { daemonId, uuid });
+    if (r.status === 200 && r.data && typeof r.data === 'object' && r.data.config) {
+      name = String(r.data.config.nickname || '');
+    }
+  } catch (e) { /* 忽略，返回空 */ }
+  instanceNameCache.set(key, { name, time: Date.now() });
+  return name;
+}
 
 async function getInstanceUsername(mcsm, daemonId, uuid) {
   const cached = usernameCache.get(uuid);
@@ -536,6 +569,62 @@ async function getInstanceInventory(mcsm, daemonId, uuid) {
   for (const it of items) map.set(it.slot, it);
   const slots = Array.from(map.values()).sort((a, b) => a.slot - b.slot);
   return ok({ slots, enabled: slots.length > 0 });
+}
+
+// ---------------------------------------------------------------------------
+// 删除实例辅助：MCSM 10 要求实例为「已停止」状态才允许删除
+// （daemon 端 removeInstance 对运行中实例直接抛错，且 panel 端会先删数据库
+//   记录再请求 daemon，运行中删除会造成记录与实例不一致）。
+// 因此删除前先停止实例并轮询等待其进入已停止状态，失败则放弃删除并报错。
+// ---------------------------------------------------------------------------
+const sleepMs = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** 查询实例状态码（0=已停止 1=停止中 2=启动中 3=运行中 -1=忙碌；查询失败返回 null）。 */
+async function getInstanceStatusCode(mcsm, daemonId, uuid) {
+  try {
+    const r = await mcsm.request('GET', '/api/instance', { daemonId, uuid });
+    if (r.status !== 200 || !r.data || typeof r.data !== 'object') return null;
+    return String(r.data.status == null ? '' : r.data.status);
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * 停止实例并等待其进入「已停止」状态（先 stop，超时后 kill）。
+ * @returns {Promise<boolean>} 已停止返回 true；无法停止返回 false
+ */
+async function ensureInstanceStopped(mcsm, daemonId, uuid) {
+  const first = await getInstanceStatusCode(mcsm, daemonId, uuid);
+  if (first === '0') return true;          // 已停止
+  if (first === null) return true;         // 状态查询失败不阻塞，交给删除接口报错
+
+  // 非停止状态：先尝试正常停止
+  try {
+    await mcsm.request('POST', '/api/protected_instance/stop', { daemonId, uuid });
+  } catch (e) { /* stop 失败（忙碌等）继续轮询 */ }
+
+  // 轮询等待停止（最长 45s）
+  const deadline = Date.now() + 45000;
+  while (Date.now() < deadline) {
+    await sleepMs(1000);
+    const s = await getInstanceStatusCode(mcsm, daemonId, uuid);
+    if (s === '0') return true;
+    if (s === null) return true;
+  }
+
+  // 超时仍未停止：尝试强杀（最长再等 20s）
+  try {
+    await mcsm.request('POST', '/api/protected_instance/kill', { daemonId, uuid });
+  } catch (e) { /* kill 失败继续轮询 */ }
+  const deadline2 = Date.now() + 20000;
+  while (Date.now() < deadline2) {
+    await sleepMs(1000);
+    const s = await getInstanceStatusCode(mcsm, daemonId, uuid);
+    if (s === '0') return true;
+    if (s === null) return true;
+  }
+  return false;
 }
 
 async function proxyRoute(mcsm, ctx, panelConfig) {
@@ -592,7 +681,10 @@ async function proxyRoute(mcsm, ctx, panelConfig) {
           daemonId: body.daemonId,
           uuid: body.uuid
         });
-        if (r.status === 200) logOperation(ctx.operator, '实例操作', action + ' uuid=' + (body.uuid || ''));
+        if (r.status === 200) {
+          const instName = await getInstanceName(mcsm, body.daemonId, body.uuid);
+          logOperation(ctx.operator, '实例操作', action + ' → ' + (instName || body.uuid));
+        }
         return r.status === 200 ? ok(r.data) : fail(r.error, r.status);
       }
 
@@ -603,7 +695,10 @@ async function proxyRoute(mcsm, ctx, panelConfig) {
           uuid: body.uuid,
           command: String(body.command)
         });
-        if (r.status === 200) logOperation(ctx.operator, '发送命令', String(body.command) + ' uuid=' + (body.uuid || ''));
+        if (r.status === 200) {
+          const instName = await getInstanceName(mcsm, body.daemonId, body.uuid);
+          logOperation(ctx.operator, '发送命令', String(body.command) + ' → ' + (instName || body.uuid));
+        }
         return r.status === 200 ? ok(r.data) : fail(r.error, r.status);
       }
 
@@ -709,6 +804,15 @@ async function proxyRoute(mcsm, ctx, panelConfig) {
       case 'POST /api/instance/delete': {
         if (!Array.isArray(body.uuids) || body.uuids.length === 0) return fail('uuids 缺失', 400);
         const deleteFile = Boolean(body.deleteFile);
+        // MCSM 10 只允许删除「已停止」实例：删除前逐个自动停止并等待
+        const stopFailures = [];
+        for (const uuid of body.uuids) {
+          const stopped = await ensureInstanceStopped(mcsm, body.daemonId, uuid);
+          if (!stopped) stopFailures.push(uuid);
+        }
+        if (stopFailures.length > 0) {
+          return fail('实例未能停止（请手动停止后再删除，本次未执行删除）: ' + stopFailures.join(', '), 502);
+        }
         const r = await mcsm.request('DELETE', '/api/instance', { daemonId: body.daemonId }, { uuids: body.uuids, deleteFile });
         if (r.status === 200) logOperation(ctx.operator, '删除实例', (body.uuids || []).join(', ') + (deleteFile ? '（含文件）' : ''));
         return r.status === 200 ? ok(r.data) : fail(r.error, r.status);
@@ -736,13 +840,40 @@ function createServer(options = {}) {
   const engine = new AutomationEngine({ mcsm, config, health, logOperation });
   setTimeout(() => engine.start(), 1500); // 等服务监听就绪后启动后台循环
 
+  // ---- 注册用户（data/users.json，密码 sha256+盐 哈希；config.users 为初始/最早用户）----
+  const REG_USERS_STORE = 'users.json';
+
+  function hashPassword(password, salt) {
+    return crypto.createHash('sha256').update(String(password) + ':' + salt).digest('hex');
+  }
+
+  function registeredUsers() {
+    const saved = store.load(REG_USERS_STORE, { users: [] });
+    return (saved && Array.isArray(saved.users)) ? saved.users : [];
+  }
+
+  function isOwnerUser(username) {
+    // 「最早的 admin」= 配置文件 users 数组的第一个用户；
+    // 单口令模式（未配置 users）下登录者即管理员，视为 owner。
+    if (users.length === 0) return true;
+    const first = users[0];
+    return !!first && first.username === username;
+  }
+
   function verifyLogin(username, password) {
     if (users.length > 0) {
       const u = users.find((x) => x && x.username === username && x.password === password);
-      return u ? { username: u.username, role: u.role === 'readonly' ? 'readonly' : 'admin' } : null;
+      if (u) return { username: u.username, role: u.role === 'readonly' ? 'readonly' : 'admin' };
+    }
+    // 注册用户（data/users.json，密码哈希校验）
+    const ru = registeredUsers().find((x) => x && x.username === username);
+    if (ru && ru.passwordHash && ru.passwordHash.hash === hashPassword(password, ru.passwordHash.salt)) {
+      return { username: ru.username, role: ru.role === 'readonly' ? 'readonly' : 'admin' };
     }
     // 单口令兼容模式：登录者视为管理员
-    if (config.authToken && password === config.authToken) return { username: username || 'admin', role: 'admin' };
+    if (users.length === 0 && config.authToken && password === config.authToken) {
+      return { username: username || 'admin', role: 'admin' };
+    }
     return null;
   }
 
@@ -833,6 +964,23 @@ function createServer(options = {}) {
         // 操作日志查询
         if (method === 'GET' && pathname === '/api/operation-logs') {
           sendJson(res, 200, ok(operationLogs.slice().reverse()));
+          return;
+        }
+
+        // ---- 正版玩家头像代理（GET /api/avatar/<游戏名>，返回皮肤 PNG 由前端裁脸）----
+        if (method === 'GET' && pathname.startsWith('/api/avatar/')) {
+          const name = decodeURIComponent(pathname.slice('/api/avatar/'.length)).trim();
+          try {
+            const png = await avatarService.getSkinPng(name);
+            res.writeHead(200, {
+              'Content-Type': 'image/png',
+              'Cache-Control': 'public, max-age=86400',
+              'X-Content-Type-Options': 'nosniff'
+            });
+            res.end(png);
+          } catch (error) {
+            sendJson(res, error.status || 502, { ok: false, error: error.message });
+          }
           return;
         }
 

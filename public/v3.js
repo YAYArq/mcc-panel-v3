@@ -126,10 +126,29 @@
   }
 
   function selValue(selectEl) {
+    if (!selectEl) return null;
     const opt = selectEl.selectedOptions && selectEl.selectedOptions[0];
     if (!opt) return null;
     return { daemonId: opt.dataset.daemonId, uuid: opt.dataset.uuid, name: opt.textContent.split(' (')[0] };
   }
+
+  // ---- 当前抽屉实例（MCC 魔改功能已移入实例抽屉，由 app.js 在打开抽屉时设置）----
+  let drawerModInstance = null;
+
+  /** 魔改操作的目标实例：优先取抽屉实例，兼容旧的下拉选择。 */
+  function modTarget() {
+    return drawerModInstance || modTarget();
+  }
+
+  /** app.js 打开实例抽屉时调用，设置魔改面板的目标实例。 */
+  V3.setDrawerInstance = function (inst) {
+    drawerModInstance = inst ? { daemonId: inst.daemonId, uuid: inst.uuid, name: inst.nickname || inst.uuid } : null;
+  };
+
+  /** app.js 切换到抽屉「魔改」tab 时调用，加载当前实例的魔改配置。 */
+  V3.loadDrawerMod = function () {
+    return loadModData();
+  };
 
   // ---------------------------------------------------------------------------
   // 视图生命周期（app.js 调用）
@@ -386,14 +405,19 @@
   // ---------------------------------------------------------------------------
   async function loadModTab() {
     const sel = $('#v3-mod-instance');
-    await loadInstanceOptions(sel, false);
-    if (sel.options.length > 0) await loadModData();
-    else $('#v3-mod-instance-info').textContent = '（无实例可选）';
+    if (sel) {
+      await loadInstanceOptions(sel, false);
+      if (sel.options.length > 0) await loadModData();
+      else if ($('#v3-mod-instance-info')) $('#v3-mod-instance-info').textContent = '（无实例可选）';
+    } else {
+      // 魔改面板已移入实例抽屉：直接加载抽屉实例数据
+      await loadModData();
+    }
   }
 
   async function loadModData() {
-    const target = selValue($('#v3-mod-instance'));
-    $('#v3-mod-instance-info').textContent = target ? '当前实例: ' + target.name : '';
+    const target = modTarget();
+    if ($('#v3-mod-instance-info')) $('#v3-mod-instance-info').textContent = target ? '当前实例: ' + target.name : '';
     if (!target) return;
     // 指令
     try {
@@ -415,12 +439,14 @@
       const m = r.data || {};
       const afk = m.antiAfk || {};
       const relog = m.autoRelog || {};
-      $('#v3-mod-antiafk').checked = afk.enabled !== 'false' && afk.enabled !== undefined;
-      $('#v3-mod-antiafk-delay').value = afk.delay || 600;
-      $('#v3-mod-antiafk-cmd').value = afk.command || '/ping';
-      $('#v3-mod-autorelog').checked = relog.enabled !== 'false' && relog.enabled !== undefined;
-      $('#v3-mod-autorelog-retries').value = relog.retries == null ? 5 : relog.retries;
-      $('#v3-mod-autorelog-ignore').checked = relog.ignorekickmessage === 'true';
+      // 新版 MCC 段键为大写（Enabled/Delay/Command/Retries/Ignore_Kick_Message）
+      const afkDelayMatch = /\bmin\s*=\s*([\d.]+)/.exec(String(afk.Delay || ''));
+      $('#v3-mod-antiafk').checked = afk.Enabled !== 'false' && afk.Enabled !== undefined;
+      $('#v3-mod-antiafk-delay').value = afkDelayMatch ? afkDelayMatch[1] : 600;
+      $('#v3-mod-antiafk-cmd').value = String(afk.Command || '/ping').replace(/"/g, '');
+      $('#v3-mod-autorelog').checked = relog.Enabled !== 'false' && relog.Enabled !== undefined;
+      $('#v3-mod-autorelog-retries').value = relog.Retries == null ? 5 : relog.Retries;
+      $('#v3-mod-autorelog-ignore').checked = relog.Ignore_Kick_Message === 'true';
     } catch (e) {
       $('#v3-mod-antiafk').checked = false;
       $('#v3-mod-autorelog').checked = false;
@@ -565,7 +591,7 @@
             cooldownMs: (Number($('#v3-reco-cooldown').value) || 60) * 1000
           }
         });
-        $('#v3-reco-result').textContent = '已保存 ✓';
+        $('#v3-reco-result').textContent = '已保存';
         toast('掉线检测配置已保存');
       } catch (err) { $('#v3-reco-result').textContent = err.message; }
     });
@@ -579,7 +605,7 @@
             command: $('#v3-afk-command').value.trim()
           }
         });
-        $('#v3-afk-result').textContent = '已保存 ✓';
+        $('#v3-afk-result').textContent = '已保存';
         toast('防 AFK 配置已保存');
       } catch (err) { $('#v3-afk-result').textContent = err.message; }
     });
@@ -611,8 +637,8 @@
     });
 
     // MCC 魔改
-    $('#v3-mod-reload').addEventListener('click', () => loadModTab());
-    $('#v3-mod-instance').addEventListener('change', () => loadModData());
+    if ($('#v3-mod-reload')) $('#v3-mod-reload').addEventListener('click', () => loadModTab());
+    if ($('#v3-mod-instance')) $('#v3-mod-instance').addEventListener('change', () => loadModData());
     $('#v3-cmd-add').addEventListener('click', () => {
       const tbody = $('#v3-cmd-table tbody');
       const row = document.createElement('tr');
@@ -626,7 +652,7 @@
       tbody.appendChild(row);
     });
     $('#v3-cmd-save').addEventListener('click', async () => {
-      const target = selValue($('#v3-mod-instance'));
+      const target = modTarget();
       if (!target) { toast('请先选择实例', 'err'); return; }
       const commands = Array.from(document.querySelectorAll('#v3-cmd-table tbody tr')).map((tr) => ({
         trigger: tr.querySelector('.cmd-trigger').value.trim(),
@@ -636,7 +662,7 @@
       })).filter((c) => c.trigger);
       try {
         const r = await api.v3Put('mcc/commands', { daemonId: target.daemonId, uuid: target.uuid, commands });
-        $('#v3-cmd-result').textContent = `已保存 ${r.data.count} 条指令 ✓`;
+        $('#v3-cmd-result').textContent = `已保存 ${r.data.count} 条指令`;
         toast('聊天指令已保存');
       } catch (e) { $('#v3-cmd-result').textContent = e.message; }
     });
@@ -659,7 +685,7 @@
       tbody.appendChild(tr);
     });
     $('#v3-server-save').addEventListener('click', async () => {
-      const target = selValue($('#v3-mod-instance'));
+      const target = modTarget();
       if (!target) { toast('请先选择实例', 'err'); return; }
       const servers = Array.from(document.querySelectorAll('#v3-server-table tbody tr')).map((tr) => ({
         alias: tr.querySelector('.srv-alias').value.trim(),
@@ -668,7 +694,7 @@
       })).filter((s) => s.alias && s.host);
       try {
         const r = await api.v3Put('mcc/servers', { daemonId: target.daemonId, uuid: target.uuid, servers });
-        $('#v3-server-result').textContent = `已保存 ${r.data.count} 个服务器 ✓`;
+        $('#v3-server-result').textContent = `已保存 ${r.data.count} 个服务器`;
         toast('服务器列表已保存');
       } catch (e) { $('#v3-server-result').textContent = e.message; }
     });
@@ -677,7 +703,7 @@
       if (!btn) return;
       const tr = btn.closest('tr');
       if (!tr) return;
-      const target = selValue($('#v3-mod-instance'));
+      const target = modTarget();
       if (!target) return;
       const alias = tr.querySelector('.srv-alias').value.trim();
       const host = tr.querySelector('.srv-host').value.trim();
@@ -697,7 +723,7 @@
 
     $('#v3-mod-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const target = selValue($('#v3-mod-instance'));
+      const target = modTarget();
       if (!target) { toast('请先选择实例', 'err'); return; }
       try {
         const payload = {
@@ -720,28 +746,28 @@
           payload.autoRelog.kickMessages = ['Connection has been lost', 'Login failed', 'Failed to ping this IP', 'Restarting'];
         }
         const r = await api.v3Post('mcc/apply-mod', payload);
-        $('#v3-mod-result').textContent = '已应用，需重启实例生效 ✓ 附加文件: ' + (r.data.files || []).join(', ');
+        $('#v3-mod-result').textContent = '已应用，需重启实例生效 附加文件: ' + (r.data.files || []).join(', ');
         toast('MCC 原生功能配置已写入');
       } catch (err) { $('#v3-mod-result').textContent = err.message; }
     });
 
     $('#v3-script-idle').addEventListener('click', async () => {
-      const target = selValue($('#v3-mod-instance'));
+      const target = modTarget();
       if (!target) { toast('请先选择实例', 'err'); return; }
       try {
         const tpl = (await api.v3Get('mcc/templates')).data;
         await api.v3Post('mcc/scripts', { daemonId: target.daemonId, uuid: target.uuid, name: 'idle.txt', content: tpl.idle.content });
-        $('#v3-script-result').textContent = '已生成 idle.txt ✓ 可在实例「脚本」tab 中运行 /script idle';
+        $('#v3-script-result').textContent = '已生成 idle.txt 可在实例「脚本」tab 中运行 /script idle';
         toast('挂机脚本已生成');
       } catch (e) { $('#v3-script-result').textContent = e.message; }
     });
     $('#v3-script-tasks').addEventListener('click', async () => {
-      const target = selValue($('#v3-mod-instance'));
+      const target = modTarget();
       if (!target) { toast('请先选择实例', 'err'); return; }
       try {
         const tpl = (await api.v3Get('mcc/templates')).data;
         await api.v3Post('mcc/scripts', { daemonId: target.daemonId, uuid: target.uuid, name: 'tasks.txt', content: tpl.tasks.content });
-        $('#v3-script-result').textContent = '已生成 tasks.txt ✓ 配合「应用原生功能配置」中的脚本调度使用';
+        $('#v3-script-result').textContent = '已生成 tasks.txt 配合「应用原生功能配置」中的脚本调度使用';
         toast('任务模板已生成');
       } catch (e) { $('#v3-script-result').textContent = e.message; }
     });
@@ -753,7 +779,7 @@
         const r = await api.v3Get('instances/export', { includeIni: $('#v3-export-ini').checked });
         const text = JSON.stringify(r.data, null, 2);
         $('#v3-export-out').value = text;
-        $('#v3-export-result').textContent = `已导出 ${r.data.instances.length} 个实例 ✓`;
+        $('#v3-export-result').textContent = `已导出 ${r.data.instances.length} 个实例`;
       } catch (e) { $('#v3-export-result').textContent = e.message; }
     });
     $('#v3-export-download').addEventListener('click', () => {
