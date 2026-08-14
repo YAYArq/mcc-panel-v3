@@ -91,11 +91,6 @@ INSTALL_DIR=/opt/mcc-panel \
 sudo -E bash install.sh
 ```
 
-> **v2 → v3 升级**：直接覆盖代码即可（`server.js`、`lib/`、`public/`、`package.json`、`README.md`）。
-> `panel.config.json`、`templates/`、`data/` 会被保留，升级无需重配；重启服务即生效：
-> ```bash
-> sudo systemctl restart mcc-panel
-> ```
 > 新版首次启动会自动创建 `data/` 目录并开始采集健康数据（默认 15 秒轮询一次）。
 
 ### 手动启动
