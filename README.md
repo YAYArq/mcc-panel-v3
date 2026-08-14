@@ -11,7 +11,7 @@
 
 ## 功能
 
-### v2 基础功能（全部保留）
+### 基础功能
 
 - 实例列表与实时状态（运行中 / 启动中 / 停止中 / 已停止 / 忙碌），按 MCSM 远程节点(daemon)切换
 - 启动 / 停止 / 重启 / 强杀（单实例与批量操作）、名称搜索、多选批量控制
@@ -19,7 +19,7 @@
 - 节点文件管理器、内置 MCC 模板管理（上传/删除/从容器初始化）、操作日志审计
 - 深色/日间主题、UUID 头像、healthz
 
-### v3 增强功能（顶栏「🚀 增强」主页标签页进入，不单独开视图）
+### 增强功能
 
 1. **实例健康监控面板**：在线时长（当前/累计/最长）、重启次数、掉线次数、消息统计（今日/累计/近 30 天柱状图），列表显示实例名
 2. **自动化**：
@@ -225,7 +225,7 @@ node server.js /path/to/panel.config.json
 
 ## 致谢
 
-- **[APRme/MULTIBOT_PANEL](https://github.com/APRme/MULTIBOT_PANEL)** — 本项目的 UI 风格与交互设计参考（感谢其提供灵感）。后续的**头像获取**（玩家头像）与**材质获取**（皮肤材质）功能亦将参考该项目的实现思路。
+- **[APRme/MULTIBOT_PANEL](https://github.com/APRme/MULTIBOT_PANEL)** — 感谢其提供灵感。后续的**头像获取**（玩家头像）与**材质获取**（皮肤材质）功能参考该项目的实现思路。
 - **[MCSManager](https://github.com/MCSManager/MCSManager)**（Apache-2.0）— 提供节点/实例管理 API，本面板经其 daemon 控制 MCC 实例。
 - **[Minecraft Console Client](https://github.com/MCCTeam/Minecraft-Console-Client)**（CDDL-1.0）— 被本面板控制与配置的机器人客户端。
 
