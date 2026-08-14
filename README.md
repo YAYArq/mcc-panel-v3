@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D16-brightgreen.svg)](package.json)
 
-一个通过 **MCSManager (MCSM)** 控制 **MCC (Minecraft Console Client)** bot 实例的网页面板，可部署在服务器上。界面与交互参考 [APRme/MULTIBOT_PANEL](https://github.com/APRme/MULTIBOT_PANEL)，UI 风格融合明日方舟 × 女神异闻录 3/4。
+一个通过 **MCSManager (MCSM)** 控制 **MCC (Minecraft Console Client)** bot 实例的网页面板，可部署在服务器上。UI 风格与交互设计参考并感谢 [APRme/MULTIBOT_PANEL](https://github.com/APRme/MULTIBOT_PANEL)，UI 风格融合明日方舟 × 女神异闻录 3/4。
 
 **v3 增强版**：在 v2 全部功能之上，叠加了实例健康监控、自动化（定时任务/掉线自动重连/防 AFK/开机自启组）、MCC 客户端"魔改"（自定义聊天指令/多服务器切换/原生功能注入）、批量导入导出与克隆、操作日志筛选导出、权限分级与 IP 白名单。
 
@@ -210,6 +210,12 @@ node server.js /path/to/panel.config.json
 - 生产环境建议在反向代理（Nginx / Caddy）后启用 HTTPS。
 - 面板暴露公网时，建议开启 IP 白名单或加访问控制。
 - 用最小权限的 MCSM 账号生成 `apikey`（仅授权相关实例）。
+
+## 致谢
+
+- **[APRme/MULTIBOT_PANEL](https://github.com/APRme/MULTIBOT_PANEL)** — 本项目的 UI 风格与交互设计参考（感谢其提供灵感）。后续的**头像获取**（玩家头像）与**材质获取**（皮肤材质）功能亦将参考该项目的实现思路。
+- **[MCSManager](https://github.com/MCSManager/MCSManager)**（Apache-2.0）— 提供节点/实例管理 API，本面板经其 daemon 控制 MCC 实例。
+- **[Minecraft Console Client](https://github.com/MCCTeam/Minecraft-Console-Client)**（CDDL-1.0）— 被本面板控制与配置的机器人客户端。
 
 ## 许可证
 
