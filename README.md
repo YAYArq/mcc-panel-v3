@@ -39,8 +39,11 @@
 6. **操作日志筛选/导出**：按用户 / 操作 / 时间范围筛选，导出 CSV / JSON（日志已持久化到 `data/logs.jsonl`，保留 10000 条）；发送命令/实例操作记录显示实例名
 7. **正版头像**：实例卡片显示正版玩家皮肤头像（后端代理 Mojang API + 前端 canvas 裁脸，绕过浏览器 CSP 对外部头像源的拦截；离线账号显示占位）
 8. **背包游戏图标**：背包格子显示原版物品贴图（从 MC 客户端 jar 提取到 `public/assets/items/`，共 1600+ 物品；无图标的物品自动回退显示文字名）
-9. **用户注册**：顶栏「用户」入口（仅最早的 admin 用户可见）——`config.users[0]` 是初始管理员，只有它可以注册其他用户（admin/readonly 角色）；注册用户存 `data/users.json`（密码 sha256+盐 哈希），重启面板后依然有效
-10. **权限分级**：`config.users[].role` 支持 `admin` / `readonly`；只读用户仅可查看（前端隐藏写按钮 + 后端 403 双重拦截）
+9. **用户注册与权限**：顶栏「用户」入口（仅管理员可见，普通用户/只读不可见）——`config.users[0]` 是最早的 admin（仅它可注册新用户）；注册用户存 `data/users.json`（密码 sha256+盐 哈希），支持三种角色：
+   - **管理员 admin**：全部权限，可删除注册用户、为普通用户配置可用实例
+   - **普通用户 user**：可启停/重启/强杀/命令/日志/配置/文件/背包/脚本/魔改**被授权的实例**（实例列表与健康面板仅显示授权实例）；无删除实例/创建实例/定时任务/自启组/导入导出/操作日志等全局管理权限
+   - **只读 readonly**：仅查看
+10. **权限分级（后端双重拦截）**：`config.users[].role` = `admin` | `user` | `readonly`；readonly 对任何非 GET 请求 403；user 对全局管理接口与未授权实例 403（实例级接口逐请求校验 daemonId/uuid 授权）
 11. **IP 白名单**：`ipWhitelistEnabled` + `ipWhitelist`，非白名单 IP 一律 403（含静态资源与 healthz）；反向代理场景用 `trustProxy` 读取 X-Forwarded-For
 12. **手机端优化**：响应式布局与触控友好的设置开关；全站无 emoji 装饰、粒子特效已移除（性能）
 
@@ -181,8 +184,10 @@ node server.js /path/to/panel.config.json
 | 方法与路径 | 说明 | 权限 |
 | --- | --- | --- |
 | `GET /api/v3/me` | 当前用户与角色（含 isOwner：是否为最早 admin） | 登录即可 |
-| `GET /api/v3/users` | 用户列表（配置用户 + 注册用户，不含密码） | 登录即可 |
-| `POST /api/v3/users` | 注册新用户（仅最早 admin = `users[0]` 可调用；密码哈希存 data/users.json） | 最早 admin |
+| `GET /api/v3/users` | 用户列表（配置用户 + 注册用户，不含密码；仅 admin 可见） | admin |
+| `POST /api/v3/users` | 注册新用户（仅最早 admin = `users[0]` 可调用；角色 admin/user/readonly） | 最早 admin |
+| `PUT /api/v3/users` | 修改注册用户角色/授权实例清单（admin） | admin |
+| `DELETE /api/v3/users?id=x` | 删除注册用户（admin；初始用户在 panel.config.json 中不可删） | admin |
 | `GET /api/avatar/<游戏名>` | 正版玩家皮肤 PNG 代理（Mojang API，前端裁脸） | 登录即可 |
 | `GET /api/v3/overview` | 总览（实例数/统计/任务数） | 登录即可 |
 | `GET /api/v3/health` | 实例健康监控列表 | 登录即可 |

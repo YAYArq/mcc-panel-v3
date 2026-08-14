@@ -43,7 +43,9 @@ const sessions = new Map(); // token -> { username, role, expiry }
 
 function issueSession(username, role) {
   const token = crypto.randomBytes(32).toString('hex');
-  sessions.set(token, { username: username || '', role: role === 'readonly' ? 'readonly' : 'admin', expiry: Date.now() + SESSION_TTL_MS });
+  // 角色三档：admin / user（普通用户）/ readonly（只读）
+  const normalized = ['admin', 'user', 'readonly'].includes(role) ? role : 'admin';
+  sessions.set(token, { username: username || '', role: normalized, expiry: Date.now() + SESSION_TTL_MS });
   return token;
 }
 
@@ -860,15 +862,30 @@ function createServer(options = {}) {
     return !!first && first.username === username;
   }
 
+  /**
+   * 普通用户（role=user）是否被授权操作指定实例。
+   * instances = null 表示不限制（admin）；数组 = 授权实例清单。
+   */
+  function userCanAccessInstance(username, daemonId, uuid) {
+    const u = registeredUsers().find((x) => x && x.username === username);
+    if (!u) return false;
+    if (u.role !== 'user') return true;
+    const list = u.instances;
+    if (list == null) return true;
+    if (!Array.isArray(list)) return false;
+    return list.some((i) => i && String(i.daemonId) === String(daemonId) && String(i.uuid) === String(uuid));
+  }
+
   function verifyLogin(username, password) {
     if (users.length > 0) {
       const u = users.find((x) => x && x.username === username && x.password === password);
       if (u) return { username: u.username, role: u.role === 'readonly' ? 'readonly' : 'admin' };
     }
-    // 注册用户（data/users.json，密码哈希校验）
+    // 注册用户（data/users.json，密码哈希校验；角色可为 admin / user / readonly）
     const ru = registeredUsers().find((x) => x && x.username === username);
     if (ru && ru.passwordHash && ru.passwordHash.hash === hashPassword(password, ru.passwordHash.salt)) {
-      return { username: ru.username, role: ru.role === 'readonly' ? 'readonly' : 'admin' };
+      const r = ['admin', 'user', 'readonly'].includes(ru.role) ? ru.role : 'admin';
+      return { username: ru.username, role: r };
     }
     // 单口令兼容模式：登录者视为管理员
     if (users.length === 0 && config.authToken && password === config.authToken) {
@@ -954,11 +971,31 @@ function createServer(options = {}) {
         }
         const operatorInfo = getSessionInfo(token) || { username: '', role: 'admin' };
         const operator = operatorInfo.username;
+        const role = operatorInfo.role;
+        const isGet = ['GET', 'HEAD', 'OPTIONS'].includes(method);
 
         // ---- v3 权限分级：readonly 禁止一切写操作 ----
-        if (operatorInfo.role === 'readonly' && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+        if (role === 'readonly' && !isGet) {
           sendJson(res, 403, { ok: false, error: '只读账号无权执行此操作' });
           return;
+        }
+
+        // ---- 普通用户（role=user）权限：全局管理接口一律禁止 ----
+        if (role === 'user') {
+          const deniedWrite = [
+            '/api/v3/users', '/api/v3/schedules', '/api/v3/automation', '/api/v3/autostart-groups',
+            '/api/v3/health/reset', '/api/v3/instances/import', '/api/v3/instance/clone',
+            '/api/instance/create', '/api/instance/delete', '/api/operation-logs'
+          ].includes(pathname) || pathname.startsWith('/api/template/');
+          const deniedGet = [
+            '/api/v3/users', '/api/v3/operation-logs', '/api/v3/instances/export',
+            '/api/v3/schedules', '/api/v3/automation', '/api/v3/autostart-groups',
+            '/api/operation-logs'
+          ].includes(pathname);
+          if ((!isGet && deniedWrite) || (isGet && deniedGet)) {
+            sendJson(res, 403, { ok: false, error: '普通用户无权使用该功能' });
+            return;
+          }
         }
 
         // 操作日志查询
@@ -1036,6 +1073,34 @@ function createServer(options = {}) {
           ? await readJsonBody(req)
           : {};
 
+        // ---- 普通用户（role=user）：实例级接口需校验实例授权 ----
+        if (role === 'user') {
+          const needsInstanceCheck = [
+            '/api/instance', '/api/instance/outputlog', '/api/instance/action', '/api/instance/command',
+            '/api/instance/config', '/api/instance/inventory', '/api/instance/username',
+            '/api/files/list', '/api/files/read', '/api/files/write', '/api/files/touch',
+            '/api/files/mkdir', '/api/files/delete', '/api/files/copy', '/api/files/move',
+            '/api/v3/mcc/commands', '/api/v3/mcc/servers', '/api/v3/mcc/switch-server',
+            '/api/v3/mcc/apply-mod', '/api/v3/mcc/settings', '/api/v3/mcc/scripts', '/api/v3/mcc/mod'
+          ].includes(pathname);
+          if (needsInstanceCheck) {
+            const targetDaemonId = isGet
+              ? url.searchParams.get('daemonId')
+              : (body && body.daemonId);
+            const targetUuid = isGet
+              ? url.searchParams.get('uuid')
+              : (body && body.uuid);
+            if (!targetDaemonId || !targetUuid) {
+              sendJson(res, 403, { ok: false, error: '缺少实例参数' });
+              return;
+            }
+            if (!userCanAccessInstance(operator, targetDaemonId, targetUuid)) {
+              sendJson(res, 403, { ok: false, error: '无权操作该实例（未授权）' });
+              return;
+            }
+          }
+        }
+
         // ---- v3 增强路由（/api/v3/*）----
         const v3Result = await handleV3Route({
           method,
@@ -1063,8 +1128,15 @@ function createServer(options = {}) {
           query: Object.fromEntries(url.searchParams.entries()),
           method,
           body,
-          operator
+          operator,
+          role
         }, config);
+        // 普通用户：实例列表只返回被授权的实例
+        if (result && result.ok && role === 'user' && pathname === '/api/instances') {
+          const rawList = (result.data && result.data.data) || [];
+          const listDaemonId = url.searchParams.get('daemonId');
+          result.data.data = rawList.filter((inst) => inst && userCanAccessInstance(operator, listDaemonId, inst.instanceUuid));
+        }
         if (result === null) {
           sendJson(res, 404, fail('接口不存在', 404));
         } else {
