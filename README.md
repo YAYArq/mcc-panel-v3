@@ -1,5 +1,5 @@
-# YAYAbot (mcc-panel-v3)
-
+# MCC-panel-v3
+依旧写点史
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D16-brightgreen.svg)](package.json)
 
