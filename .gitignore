@@ -6,6 +6,9 @@ config.local.json
 # v3 运行时数据（健康统计/定时任务/自动化配置/操作日志）
 data/
 
+# 背包物品贴图（Mojang 资产，从 MC 客户端 jar 提取，仅生产环境保留）
+public/assets/
+
 # Node
 node_modules/
 

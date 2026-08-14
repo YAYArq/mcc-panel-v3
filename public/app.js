@@ -48,6 +48,7 @@
   const createAcctype = $('#create-acctype');
   const createLogin = $('#create-login');
   const createTpa = $('#create-tpa');
+  const createTpaRegex = $('#create-tpa-regex');
   const createResult = $('#create-result');
   const createCancel = $('#create-cancel');
   const themeToggle = $('#theme-toggle');
@@ -174,8 +175,6 @@
   const toastEl = $('#toast');
 
   // ---- v3 增强视图 ----
-  const v3Toggle = $('#v3-toggle');
-  const v3Back = $('#v3-back');
   const v3View = $('#v3-view');
   const toolbarEl = document.querySelector('.toolbar');
 
@@ -183,7 +182,7 @@
   const THEME_KEY = 'yayabot_theme';
   function applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
-    if (themeToggle) themeToggle.textContent = theme === 'light' ? '☀️' : '🌙';
+    if (themeToggle) themeToggle.textContent = theme === 'light' ? '日间' : '夜间';
     try { localStorage.setItem(THEME_KEY, theme); } catch (e) { /* 忽略 */ }
   }
   (function initTheme() {
@@ -319,12 +318,15 @@
     loginTitle.textContent = config.title || 'YAYA MCC BOT';
     document.title = config.title || 'YAYA MCC BOT';
 
-    // v3：同步当前用户与角色（只读用户隐藏写操作按钮）
+    // v3：同步当前用户与角色（只读用户隐藏写操作按钮）+ 最早管理员显示用户管理入口
     try {
       const st = await api.authStatus();
       if (st.role && window.MccPanel && window.MccPanel.v3) {
         window.MccPanel.v3.setUser(st.user, st.role);
       }
+      const me = await api.v3Get('me');
+      const isOwner = !!(me && me.data && me.data.isOwner);
+      if (usersBtn) usersBtn.classList.toggle('hidden', !isOwner);
     } catch (e) { /* 忽略 */ }
 
     await loadDaemons();
@@ -516,21 +518,82 @@
     return card;
   }
 
-  const avatarCache = new Map();
+  const avatarCache = new Map();     // uuid -> 游戏名（正版 JWT 解析结果缓存）
+  const faceCache = new Map();       // 游戏名 -> 裁好的 40x40 头像 dataURL
+
+  // 头像持久缓存（localStorage，30 天），避免每次刷新都请求 Mojang
+  const FACE_CACHE_KEY = 'mcc_panel_avatars_v1';
+  const FACE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+  function readFaceStore() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(FACE_CACHE_KEY) || '{}');
+      return raw && typeof raw === 'object' ? raw : {};
+    } catch (e) { return {}; }
+  }
+  function writeFaceStore(name, dataUrl) {
+    try {
+      const store = readFaceStore();
+      store[name] = { dataUrl, at: Date.now() };
+      localStorage.setItem(FACE_CACHE_KEY, JSON.stringify(store));
+    } catch (e) { /* 配额满则只留内存缓存 */ }
+  }
+
+  /**
+   * 取正版头像：后端代理 Mojang 皮肤 PNG，前端 canvas 裁剪为 40x40 头像。
+   * 皮肤坐标：脸部 (8,8) 8x8；64x64 双层皮肤叠加帽子层 (40,8) 8x8。
+   */
+  async function fetchSkinFace(name) {
+    const cached = faceCache.get(name);
+    if (cached) return cached;
+    const store = readFaceStore();
+    if (store[name] && store[name].dataUrl && Date.now() - store[name].at < FACE_TTL_MS) {
+      faceCache.set(name, store[name].dataUrl);
+      return store[name].dataUrl;
+    }
+    const headers = {};
+    const token = localStorage.getItem('mcc_panel_session') || '';
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    const response = await fetch('/api/avatar/' + encodeURIComponent(name), { headers });
+    if (!response.ok) throw new Error('avatar http ' + response.status);
+    const blob = await response.blob();
+    const bitmap = await createImageBitmap(blob);
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = 40;
+      canvas.height = 40;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return '';
+      ctx.imageSmoothingEnabled = false; // 像素风保持硬边
+      ctx.drawImage(bitmap, 8, 8, 8, 8, 0, 0, 40, 40);
+      if (bitmap.height >= 64) {
+        ctx.drawImage(bitmap, 40, 8, 8, 8, 0, 0, 40, 40); // 帽子层
+      }
+      const dataUrl = canvas.toDataURL('image/png');
+      faceCache.set(name, dataUrl);
+      writeFaceStore(name, dataUrl);
+      return dataUrl;
+    } finally {
+      if (typeof bitmap.close === 'function') bitmap.close();
+    }
+  }
 
   function loadAvatar(uuid, img) {
     img.onerror = () => { img.onerror = null; img.src = ''; img.classList.add('avatar-fallback'); };
+    const applyFace = (name) => {
+      if (!name) { img.classList.add('avatar-fallback'); return; }
+      fetchSkinFace(name).then((dataUrl) => {
+        if (dataUrl) img.src = dataUrl;
+        else img.classList.add('avatar-fallback');
+      }).catch(() => { img.classList.add('avatar-fallback'); });
+    };
     if (avatarCache.has(uuid)) {
-      const name = avatarCache.get(uuid);
-      if (name) img.src = 'https://minotar.net/helm/' + encodeURIComponent(name) + '/64.png';
-      else img.classList.add('avatar-fallback');
+      applyFace(avatarCache.get(uuid));
       return;
     }
     api.username(currentDaemonId, uuid).then((r) => {
       const name = (r && r.data) || null;
       avatarCache.set(uuid, name);
-      if (name) img.src = 'https://minotar.net/helm/' + encodeURIComponent(name) + '/64.png';
-      else img.classList.add('avatar-fallback');
+      applyFace(name);
     }).catch(() => { img.classList.add('avatar-fallback'); });
   }
 
@@ -641,6 +704,11 @@
     drawerOverlay.classList.remove('hidden', 'closing');
     document.body.style.overflow = 'hidden';
 
+    // 设置魔改面板的目标实例（v3 的 MCC 魔改功能已移入抽屉）
+    if (window.MccPanel && window.MccPanel.v3 && window.MccPanel.v3.setDrawerInstance) {
+      window.MccPanel.v3.setDrawerInstance(currentInstance);
+    }
+
     // 重置子面板
     resetTabsToLog();
     fileTarget = '';
@@ -699,6 +767,10 @@
     drawerOverlay.classList.add('closing');
     document.body.style.overflow = '';
     currentInstance = null;
+    // 清空魔改面板目标实例
+    if (window.MccPanel && window.MccPanel.v3 && window.MccPanel.v3.setDrawerInstance) {
+      window.MccPanel.v3.setDrawerInstance(null);
+    }
     if (logTimer) clearInterval(logTimer);
     logTimer = null;
     setTimeout(() => {
@@ -723,7 +795,7 @@
   // 删除实例（支持：是否连文件一起删除）
   async function deleteInstances(uuids, nickname) {
     if (!uuids.length || !currentDaemonId) return;
-    if (!confirm('确定删除实例' + (nickname ? '「' + nickname + '」' : '（' + uuids.length + ' 个）') + '？')) return;
+    if (!confirm('确定删除实例' + (nickname ? '「' + nickname + '」' : '（' + uuids.length + ' 个）') + '？\n\n运行中的实例将自动停止后删除（可能需要等待数十秒）')) return;
     const deleteFile = confirm('同时删除实例文件（含 MCC 程序与配置，不可恢复）？\n\n点「确定」= 连文件删除\n点「取消」= 仅删除实例记录，保留文件');
     try {
       await api.deleteInstance(currentDaemonId, uuids, deleteFile);
@@ -750,10 +822,49 @@
     tabPanels.forEach((p) => p.classList.toggle('hidden', p.id !== 'tab-' + name));
     if (name === 'inventory') refreshInventory();
     if (name === 'scripts') loadScripts();
+    if (name === 'mod') {
+      // 魔改 tab：加载当前实例的 MCC 魔改配置（指令/多服务器/原生功能）
+      if (window.MccPanel && window.MccPanel.v3 && window.MccPanel.v3.loadDrawerMod) {
+        window.MccPanel.v3.loadDrawerMod();
+      }
+    }
   }
   tabs.forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
 
   // ---- 日志 ----
+  let logFilterMode = 'all'; // all = 全部，chat = 聊天（游戏内消息），system = 系统（MCC 命令提示与反馈）
+  let fullLogLines = []; // 累积的完整日志行（含前端时间戳），按过滤器渲染
+
+  /**
+   * 判定一行是否为「游戏内聊天消息」。
+   * 生产实测格式（中文服务器插件 + MCC 中文语言）：
+   *   - 玩家发言：▌『频道名』玩家名 > 消息内容
+   *   - 经典格式：<玩家名> 消息内容（英文服务器）
+   *   - 服务器事件：无前缀中文行（如 "xxx达成了目标[...]"）
+   * MCC 命令提示/反馈归系统页：[MCC] 开头、ASCII 画框（╔═║）、MCC 英文输出
+   */
+  function isChatLine(line) {
+    if (!line) return false;
+    if (/^\[MCC\]/.test(line)) return false;          // MCC 标记输出（背包/命令结果表头）
+    if (/[╔═╗║╚╝╠╣╦╩╬┌─┐└┘]/.test(line)) return false; // 命令输出画框（inventory/list 表格）
+    if (/ > /.test(line)) return true;                  // ▌『频道』玩家 > 消息
+    if (/<[^>]{1,16}>\s+\S/.test(line)) return true;    // 经典 <玩家> 消息
+    const hasCjk = /[\u4e00-\u9fa5]/.test(line);
+    if (hasCjk) {
+      // 中文行：MCC 的英文提示行不会带中文，含中文的一般是游戏内服务器消息/公告
+      return true;
+    }
+    return false; // 纯英文/符号行 = MCC 输出
+  }
+
+  /** 按当前过滤器重新渲染日志。 */
+  function applyLogFilter() {
+    let lines = fullLogLines;
+    if (logFilterMode === 'chat') lines = fullLogLines.filter(isChatLine);
+    else if (logFilterMode === 'system') lines = fullLogLines.filter((l) => !isChatLine(l));
+    logOutput.textContent = lines.join('\n');
+  }
+
   function startLogPolling() {
     if (logTimer) clearInterval(logTimer);
     const interval = (config && config.logPollIntervalMs) || 2000;
@@ -774,17 +885,22 @@
         (logOutput.scrollTop + logOutput.clientHeight >= logOutput.scrollHeight - 40);
 
       // 前端时间戳：日志累积时，给新增行加上时间
-      let display = text;
       if (lastLogText && text.length > lastLogText.length && text.startsWith(lastLogText)) {
         const newPart = text.slice(lastLogText.length);
         const t = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-        const stamped = newPart.split('\n').filter((l) => l.trim()).map((l) => '[' + t + '] ' + l).join('\n');
-        display = logOutput.textContent + (stamped ? '\n' + stamped : '');
-        if (display.length > 300000) display = display.slice(-300000);
+        const stamped = newPart.split('\n').filter((l) => l.trim()).map((l) => '[' + t + '] ' + l);
+        fullLogLines.push(...stamped);
+        if (fullLogLines.length > 20000) fullLogLines = fullLogLines.slice(-20000); // 防内存膨胀
+      } else if (!lastLogText) {
+        // 首次加载：原样显示全部
+        fullLogLines = text.split('\n');
+        if (fullLogLines.length > 20000) fullLogLines = fullLogLines.slice(-20000);
       }
       lastLogText = text;
-      logOutput.textContent = display;
-      logSize.textContent = formatBytes(new Blob([display]).size);
+
+      // 按过滤器渲染（全部 / 聊天 / 系统）
+      applyLogFilter();
+      logSize.textContent = formatBytes(new Blob([logOutput.textContent]).size);
       if (shouldScroll || logAutoscroll.checked) {
         logOutput.scrollTop = logOutput.scrollHeight;
       }
@@ -795,7 +911,17 @@
     }
   }
 
-  logClear.addEventListener('click', () => { logOutput.textContent = ''; lastLogText = ''; });
+  logClear.addEventListener('click', () => { logOutput.textContent = ''; lastLogText = ''; fullLogLines = []; });
+
+  // 日志过滤器（聊天与 MCC 命令反馈拆分显示，解决 MCC 刷屏时信息混杂）
+  document.querySelectorAll('#log-filter .log-chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('#log-filter .log-chip').forEach((c) => c.classList.remove('active'));
+      chip.classList.add('active');
+      logFilterMode = chip.dataset.logfilter || 'all';
+      applyLogFilter();
+    });
+  });
 
   // 日志面板快捷发消息（不带 / 的文本 = 游戏聊天消息）
   logChatSend.addEventListener('click', () => {
@@ -864,9 +990,103 @@
     });
   }
 
+  // ---- MinecraftClient.ini 可视化设置（手机设置风格，保留 JSON 编辑）----
+  const settingsGroupsEl = $('#settings-groups');
+  const settingsResult = $('#settings-result');
+  const settingsSaveBtn = $('#settings-save');
+  const settingsReloadBtn = $('#settings-reload');
+
+  /** 渲染单个设置项（开关 / 数字 / 文本 / 多行文本）。 */
+  function settingItemHtml(it) {
+    const label = `<span class="setting-label">${escapeHtml(it.label)}</span>`;
+    const hint = it.hint ? `<span class="setting-hint">${escapeHtml(it.hint)}</span>` : '';
+    const info = `<span class="setting-info">${label}${hint}</span>`;
+    const key = escapeHtml(it.key);
+    if (it.type === 'bool') {
+      return `<label class="setting-row">
+        ${info}
+        <span class="switch"><input type="checkbox" data-key="${key}" ${it.value ? 'checked' : ''}><span class="switch-slider"></span></span>
+      </label>`;
+    }
+    if (it.type === 'textarea') {
+      return `<label class="setting-row setting-row-col">
+        ${info}
+        <textarea data-key="${key}" class="input setting-textarea" rows="3" spellcheck="false">${escapeHtml(it.value || '')}</textarea>
+      </label>`;
+    }
+    if (it.type === 'number') {
+      return `<label class="setting-row">
+        ${info}
+        <input type="number" data-key="${key}" class="input setting-input" value="${escapeHtml(it.value)}">
+      </label>`;
+    }
+    return `<label class="setting-row">
+      ${info}
+      <input type="text" data-key="${key}" class="input setting-input mono-input" value="${escapeHtml(it.value)}" spellcheck="false">
+    </label>`;
+  }
+
+  async function loadIniSettings() {
+    if (!currentInstance) return;
+    if (!settingsGroupsEl) return;
+    settingsGroupsEl.innerHTML = '<div class="panel-hint">加载中…</div>';
+    settingsResult.textContent = '';
+    try {
+      const r = await api.v3Get('mcc/settings', { daemonId: currentInstance.daemonId, uuid: currentInstance.uuid });
+      const data = (r && r.data) || null;
+      if (!data) throw new Error('返回数据为空');
+      settingsGroupsEl.innerHTML = '';
+      for (const g of data.groups || []) {
+        const card = document.createElement('div');
+        card.className = 'settings-group';
+        const items = (g.items || []).map(settingItemHtml).join('');
+        card.innerHTML = `<div class="settings-group-title" title="点击折叠/展开">${escapeHtml(g.title)}<span class="setting-hint">${(g.items || []).length} 项</span></div><div class="settings-group-body">${items}</div>`;
+        // 点击分组标题折叠/展开（手机设置风格）
+        card.querySelector('.settings-group-title').addEventListener('click', () => {
+          card.classList.toggle('folded');
+        });
+        settingsGroupsEl.appendChild(card);
+      }
+    } catch (error) {
+      settingsGroupsEl.innerHTML = '<div class="panel-hint">可视化设置加载失败: ' + escapeHtml(error.message) + '</div>';
+    }
+  }
+
+  function collectSettingsValues() {
+    const values = {};
+    if (!settingsGroupsEl) return values;
+    settingsGroupsEl.querySelectorAll('[data-key]').forEach((el) => {
+      const k = el.dataset.key;
+      if (el.type === 'checkbox') values[k] = el.checked;
+      else if (el.type === 'number') values[k] = Number(el.value);
+      else values[k] = el.value;
+    });
+    return values;
+  }
+
+  if (settingsSaveBtn) {
+    settingsSaveBtn.addEventListener('click', async () => {
+      if (!currentInstance) return;
+      const values = collectSettingsValues();
+      if (Object.keys(values).length === 0) return;
+      settingsResult.textContent = '保存中…';
+      settingsResult.className = 'command-result';
+      try {
+        await api.v3Put('mcc/settings', { daemonId: currentInstance.daemonId, uuid: currentInstance.uuid, values });
+        settingsResult.textContent = '已保存（多数需重启实例生效）';
+        settingsResult.className = 'command-result ok';
+      } catch (error) {
+        settingsResult.textContent = '保存失败: ' + error.message;
+        settingsResult.className = 'command-result err';
+      }
+    });
+  }
+  if (settingsReloadBtn) settingsReloadBtn.addEventListener('click', loadIniSettings);
+
   // ---- 配置 ----
   async function loadConfigTab() {
     if (!currentInstance) return;
+    loadIniSettings(); // 同步加载 MinecraftClient.ini 可视化设置
     try {
       const r = await api.instance(currentInstance.daemonId, currentInstance.uuid);
       const detail = (r && r.data) || null;
@@ -980,7 +1200,7 @@
       row.className = 'file-row ' + (isDir ? 'dir' : 'file');
       row.innerHTML = `
         <input type="checkbox" class="file-check" value="${escapeHtml(item.name)}">
-        <span class="file-icon">${isDir ? '📁' : '📄'}</span>
+        <span class="file-icon">${isDir ? '目录' : '文件'}</span>
         <span class="file-name">${escapeHtml(item.name)}</span>
         <span class="file-size">${isDir ? '' : formatBytes(item.size)}</span>
       `;
@@ -1154,7 +1374,7 @@
       row.className = 'file-row ' + (isDir ? 'dir' : 'file');
       row.innerHTML = `
         <input type="checkbox" class="file-check" value="${escapeHtml(item.name)}">
-        <span class="file-icon">${isDir ? '📁' : '📄'}</span>
+        <span class="file-icon">${isDir ? '目录' : '文件'}</span>
         <span class="file-name">${escapeHtml(item.name)}</span>
         <span class="file-size">${isDir ? '' : formatBytes(item.size)}</span>
       `;
@@ -1265,36 +1485,36 @@
   // ---- 背包 ----
   // 英文物品名（驼峰/下划线）→ [中文, emoji]
   const ITEM_MAP = {
-    diamond: ['钻石', '💎'], diamond_sword: ['钻石剑', '🗡️'], diamond_pickaxe: ['钻石镐', '⛏️'],
-    diamond_axe: ['钻石斧', '🪓'], diamond_shovel: ['钻石锹', '🪏'], diamond_hoe: ['钻石锄', '🌾'],
-    diamond_helmet: ['钻石头盔', '🪖'], diamond_chestplate: ['钻石胸甲', '👕'], diamond_leggings: ['钻石护腿', '👖'], diamond_boots: ['钻石靴子', '🥾'],
-    iron_ingot: ['铁锭', '🔩'], iron_sword: ['铁剑', '🗡️'], iron_pickaxe: ['铁镐', '⛏️'], iron_axe: ['铁斧', '🪓'],
-    gold_ingot: ['金锭', '🟨'], golden_apple: ['金苹果', '🍎'], golden_carrot: ['金胡萝卜', '🥕'],
-    emerald: ['绿宝石', '💚'], netherite_ingot: ['下界合金锭', '🖤'], netherite_scrap: ['下界合金碎片', '⬛'],
-    coal: ['煤炭', '⚫'], charcoal: ['木炭', '🪵'], raw_iron: ['粗铁', '🪨'], raw_gold: ['粗金', '🪨'], raw_copper: ['粗铜', '🪨'],
-    copper_ingot: ['铜锭', '🟧'], lapis_lazuli: ['青金石', '🔵'], redstone: ['红石', '🔴'], quartz: ['下界石英', '⚪'],
-    stick: ['木棍', '🥢'], flint: ['燧石', '🪨'], string: ['线', '🧵'], feather: ['羽毛', '🪶'],
-    bone: ['骨头', '🦴'], gunpowder: ['火药', '🧨'], leather: ['皮革', '🟫'], paper: ['纸', '📄'], book: ['书', '📕'],
-    ender_pearl: ['末影珍珠', '🟢'], blaze_rod: ['烈焰棒', '🔥'], ender_eye: ['末影之眼', '👁️'],
-    arrow: ['箭', '🏹'], bow: ['弓', '🏹'], crossbow: ['弩', '🏹'], shield: ['盾牌', '🛡️'], trident: ['三叉戟', '🔱'],
-    fishing_rod: ['钓鱼竿', '🎣'], carrot: ['胡萝卜', '🥕'], potato: ['马铃薯', '🥔'], baked_potato: ['烤马铃薯', '🥔'],
-    apple: ['苹果', '🍎'], bread: ['面包', '🍞'], cooked_beef: ['牛排', '🥩'], cooked_porkchop: ['熟猪排', '🥩'],
-    cooked_chicken: ['熟鸡肉', '🍗'], beef: ['生牛肉', '🥩'], porkchop: ['生猪排', '🥩'], chicken: ['生鸡肉', '🍗'],
-    mutton: ['生羊肉', '🍖'], cooked_mutton: ['熟羊肉', '🍖'], rotten_flesh: ['腐肉', '🥩'], spider_eye: ['蜘蛛眼', '👁️'],
-    oak_log: ['橡木原木', '🪵'], spruce_log: ['云杉原木', '🪵'], birch_log: ['白桦原木', '🪵'], jungle_log: ['丛林原木', '🪵'],
-    oak_planks: ['橡木木板', '🪵'], spruce_planks: ['云杉木板', '🪵'], birch_planks: ['白桦木板', '🪵'],
-    cobblestone: ['圆石', '🪨'], stone: ['石头', '🪨'], dirt: ['泥土', '🟫'], grass_block: ['草方块', '🟩'],
-    sand: ['沙子', '🟨'], gravel: ['沙砾', '🟫'], obsidian: ['黑曜石', '⬛'], bedrock: ['基岩', '⬛'],
-    water_bucket: ['水桶', '🪣'], lava_bucket: ['熔岩桶', '🪣'], bucket: ['桶', '🪣'],
-    torch: ['火把', '🔥'], crafting_table: ['工作台', '🛠️'], furnace: ['熔炉', '🔥'], chest: ['箱子', '📦'],
-    ender_chest: ['末影箱', '📦'], anvil: ['铁砧', '🔨'], enchanting_table: ['附魔台', '📖'],
-    wheat: ['小麦', '🌾'], wheat_seeds: ['小麦种子', '🌱'], sugar_cane: ['甘蔗', '🎋'], bamboo: ['竹子', '🎋'],
-    melon_slice: ['西瓜片', '🍉'], pumpkin: ['南瓜', '🎃'], cocoa_beans: ['可可豆', '🫘'],
-    slime_ball: ['粘液球', '🟢'], snowball: ['雪球', '⚪'], egg: ['鸡蛋', '🥚'], honey_bottle: ['蜂蜜瓶', '🍯'],
-    experience_bottle: ['附魔之瓶', '🧪'], potion: ['药水', '🧪'], splash_potion: ['喷溅药水', '🧪'],
-    name_tag: ['命名牌', '🏷️'], saddle: ['鞍', '🐎'], elytra: ['鞘翅', '🪽'], totem_of_undying: ['不死图腾', '🗿'],
-    shulker_shell: ['潜影壳', '🟣'], phantom_membrane: ['幻翼膜', '🟦'], heart_of_the_sea: ['海洋之心', '💙'],
-    amethyst_shard: ['紫水晶碎片', '🟣'], echo_shard: ['回响碎片', '🟦'], sculk: ['幽匿块', '🟦']
+    diamond: '钻石', diamond_sword: '钻石剑', diamond_pickaxe: '钻石镐',
+    diamond_axe: '钻石斧', diamond_shovel: '钻石锹', diamond_hoe: '钻石锄',
+    diamond_helmet: '钻石头盔', diamond_chestplate: '钻石胸甲', diamond_leggings: '钻石护腿', diamond_boots: '钻石靴子',
+    iron_ingot: '铁锭', iron_sword: '铁剑', iron_pickaxe: '铁镐', iron_axe: '铁斧',
+    gold_ingot: '金锭', golden_apple: '金苹果', golden_carrot: '金胡萝卜',
+    emerald: '绿宝石', netherite_ingot: '下界合金锭', netherite_scrap: '下界合金碎片',
+    coal: '煤炭', charcoal: '木炭', raw_iron: '粗铁', raw_gold: '粗金', raw_copper: '粗铜',
+    copper_ingot: '铜锭', lapis_lazuli: '青金石', redstone: '红石', quartz: '下界石英',
+    stick: '木棍', flint: '燧石', string: '线', feather: '羽毛',
+    bone: '骨头', gunpowder: '火药', leather: '皮革', paper: '纸', book: '书',
+    ender_pearl: '末影珍珠', blaze_rod: '烈焰棒', ender_eye: '末影之眼',
+    arrow: '箭', bow: '弓', crossbow: '弩', shield: '盾牌', trident: '三叉戟',
+    fishing_rod: '钓鱼竿', carrot: '胡萝卜', potato: '马铃薯', baked_potato: '烤马铃薯',
+    apple: '苹果', bread: '面包', cooked_beef: '牛排', cooked_porkchop: '熟猪排',
+    cooked_chicken: '熟鸡肉', beef: '生牛肉', porkchop: '生猪排', chicken: '生鸡肉',
+    mutton: '生羊肉', cooked_mutton: '熟羊肉', rotten_flesh: '腐肉', spider_eye: '蜘蛛眼',
+    oak_log: '橡木原木', spruce_log: '云杉原木', birch_log: '白桦原木', jungle_log: '丛林原木',
+    oak_planks: '橡木木板', spruce_planks: '云杉木板', birch_planks: '白桦木板',
+    cobblestone: '圆石', stone: '石头', dirt: '泥土', grass_block: '草方块',
+    sand: '沙子', gravel: '沙砾', obsidian: '黑曜石', bedrock: '基岩',
+    water_bucket: '水桶', lava_bucket: '熔岩桶', bucket: '桶',
+    torch: '火把', crafting_table: '工作台', furnace: '熔炉', chest: '箱子',
+    ender_chest: '末影箱', anvil: '铁砧', enchanting_table: '附魔台',
+    wheat: '小麦', wheat_seeds: '小麦种子', sugar_cane: '甘蔗', bamboo: '竹子',
+    melon_slice: '西瓜片', pumpkin: '南瓜', cocoa_beans: '可可豆',
+    slime_ball: '粘液球', snowball: '雪球', egg: '鸡蛋', honey_bottle: '蜂蜜瓶',
+    experience_bottle: '附魔之瓶', potion: '药水', splash_potion: '喷溅药水',
+    name_tag: '命名牌', saddle: '鞍', elytra: '鞘翅', totem_of_undying: '不死图腾',
+    shulker_shell: '潜影壳', phantom_membrane: '幻翼膜', heart_of_the_sea: '海洋之心',
+    amethyst_shard: '紫水晶碎片', echo_shard: '回响碎片', sculk: '幽匿块'
   };
 
   let invData = {};       // slot -> {name, count}
@@ -1305,10 +1525,10 @@
   }
 
   function itemDisplay(name) {
-    const entry = ITEM_MAP[normItemKey(name)];
-    if (entry) return { zh: entry[0], emoji: entry[1] };
-    if (/[\u4e00-\u9fa5]/.test(name)) return { zh: name, emoji: '📦' };
-    return { zh: name, emoji: '📦' };
+    // 图标资源名 = 物品 ID（assets/items/<id>.png），无映射的物品只显示文字名
+    const key = normItemKey(name);
+    if (ITEM_MAP[key]) return { zh: ITEM_MAP[key], icon: key };
+    return { zh: String(name || '?'), icon: null };
   }
 
   function makeInvSlot(slotId) {
@@ -1320,6 +1540,16 @@
       const d = itemDisplay(item.name);
       el.innerHTML = `<span class="inv-name">${escapeHtml(d.zh)}</span><span class="inv-count">${item.count > 1 ? 'x' + item.count : ''}</span>`;
       el.title = d.zh + ' x' + item.count;
+      // 游戏贴图图标（assets/items/<物品id>.png）；图标 404 时隐藏露出文字名
+      if (d.icon) {
+        const img = document.createElement('img');
+        img.className = 'inv-item-icon';
+        img.src = 'assets/items/' + d.icon + '.png';
+        img.alt = '';
+        img.decoding = 'async';
+        img.addEventListener('error', () => { img.style.display = 'none'; });
+        el.insertBefore(img, el.firstChild);
+      }
     }
     el.addEventListener('click', () => selectInvSlot(slotId, el));
     return el;
@@ -1478,7 +1708,7 @@
         const row = document.createElement('div');
         row.className = 'file-row script-row';
         row.innerHTML = `
-          <span class="file-icon">📜</span>
+          <span class="file-icon">脚本</span>
           <span class="file-name">${escapeHtml(item.name)}</span>
           <span class="file-size">${formatBytes(item.size)}</span>
           <button class="btn btn-sm script-edit" title="快捷编辑">编辑</button>
@@ -1625,6 +1855,71 @@
   oplogClose.addEventListener('click', () => closeModal(oplogOverlay));
   oplogOverlay.addEventListener('click', (e) => { if (e.target === oplogOverlay) closeModal(oplogOverlay); });
 
+  // ---- 用户管理（仅最早的 admin 用户可注册其他用户）----
+  const usersOverlay = $('#users-overlay');
+  const usersBtn = $('#users-btn');
+  const usersList = $('#users-list');
+  const usersRegisterForm = $('#users-register-form');
+  const usersClose = $('#users-close');
+  const usersResult = $('#users-result');
+
+  async function loadUsers() {
+    if (!usersList) return;
+    usersList.innerHTML = '<div class="panel-hint">加载中…</div>';
+    try {
+      const r = await api.v3Get('users');
+      const d = r.data || {};
+      const list = d.users || [];
+      usersList.innerHTML = list.length === 0
+        ? '<div class="panel-hint">暂无用户</div>'
+        : list.map((u) => `
+          <div class="oplog-item">
+            <span class="oplog-user">${escapeHtml(u.username)}</span>
+            <span class="oplog-action">${u.role === 'admin' ? '管理员' : '只读'}</span>
+            <span class="oplog-detail">${u.source === 'config' ? '初始用户' : '注册用户'}</span>
+          </div>`).join('');
+    } catch (e) {
+      usersList.innerHTML = '<div class="panel-hint">加载失败: ' + escapeHtml(e.message) + '</div>';
+    }
+  }
+
+  if (usersBtn) {
+    usersBtn.addEventListener('click', () => {
+      openModal(usersOverlay);
+      if (usersResult) usersResult.textContent = '';
+      loadUsers();
+    });
+  }
+  if (usersClose) usersClose.addEventListener('click', () => closeModal(usersOverlay));
+  if (usersOverlay) usersOverlay.addEventListener('click', (e) => { if (e.target === usersOverlay) closeModal(usersOverlay); });
+
+  if (usersRegisterForm) {
+    usersRegisterForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = $('#users-new-name').value.trim();
+      const password = $('#users-new-password').value;
+      const password2 = $('#users-new-password2').value;
+      const role = $('#users-new-role').value;
+      if (password !== password2) {
+        usersResult.textContent = '两次输入的密码不一致';
+        usersResult.className = 'command-result err';
+        return;
+      }
+      usersResult.textContent = '注册中…';
+      usersResult.className = 'command-result';
+      try {
+        const r = await api.v3Post('users', { username, password, role });
+        usersResult.textContent = '已注册用户 ' + r.data.username + '（' + (r.data.role === 'admin' ? '管理员' : '只读') + '）';
+        usersResult.className = 'command-result ok';
+        usersRegisterForm.reset();
+        loadUsers();
+      } catch (err) {
+        usersResult.textContent = err.message;
+        usersResult.className = 'command-result err';
+      }
+    });
+  }
+
   // ---- 内置 MCC 模板管理 ----
   async function loadTemplateList() {
     try {
@@ -1639,7 +1934,7 @@
         const row = document.createElement('div');
         row.className = 'file-row';
         row.innerHTML = `
-          <span class="file-icon">${item.type === 0 ? '📁' : '📄'}</span>
+          <span class="file-icon">${item.type === 0 ? '目录' : '文件'}</span>
           <span class="file-name">${escapeHtml(item.name)}</span>
           <span class="file-size">${item.type === 0 ? '' : formatBytes(item.size)}</span>
           <button class="btn btn-sm btn-danger tpl-del">删除</button>
@@ -1768,7 +2063,8 @@
         serverPort: port,
         accountType,
         accountLogin: login,
-        autoAcceptTpa: createTpa.checked
+        autoAcceptTpa: createTpa.checked,
+        tpaRegex: createTpaRegex ? createTpaRegex.value.trim() : ''
       });
       if (r.ok) {
         createResult.textContent = `已创建 ${r.data.nickname}（未启动）`;
@@ -1788,63 +2084,7 @@
     }
   });
 
-  // ---- 樱花与点击特效 ----
-  (function sakuraFx() {
-    const petals = ['🌸', '✿', '❀', '💮'];
-    function spawnSakura() {
-      const el = document.createElement('span');
-      el.className = 'sakura';
-      el.textContent = petals[Math.floor(Math.random() * petals.length)];
-      el.style.left = Math.random() * 100 + 'vw';
-      el.style.fontSize = (10 + Math.random() * 14) + 'px';
-      el.style.animationDuration = (6 + Math.random() * 6) + 's';
-      document.body.appendChild(el);
-      setTimeout(() => el.remove(), 13000);
-    }
-    setInterval(spawnSakura, 1800);
-    for (let i = 0; i < 8; i++) setTimeout(spawnSakura, i * 300);
-
-    // 漂浮光点粒子
-    const pcolors = ['rgba(255,126,185,.75)', 'rgba(106,212,255,.75)', 'rgba(255,209,102,.75)', 'rgba(183,155,255,.65)'];
-    function spawnParticle() {
-      const el = document.createElement('span');
-      el.className = 'particle';
-      const size = 2 + Math.random() * 4;
-      el.style.width = size + 'px';
-      el.style.height = size + 'px';
-      el.style.left = Math.random() * 100 + 'vw';
-      const c = pcolors[Math.floor(Math.random() * pcolors.length)];
-      el.style.background = c;
-      el.style.boxShadow = '0 0 8px ' + c;
-      el.style.setProperty('--drift', (Math.random() * 120 - 60) + 'px');
-      el.style.animationDuration = (8 + Math.random() * 10) + 's';
-      document.body.appendChild(el);
-      setTimeout(() => el.remove(), 19000);
-    }
-    setInterval(spawnParticle, 700);
-    for (let i = 0; i < 10; i++) setTimeout(spawnParticle, i * 300);
-
-    document.addEventListener('click', (e) => {
-      // 按钮波纹
-      const btn = e.target.closest('.btn');
-      if (btn && btn.classList.contains('btn')) {
-        const ripple = document.createElement('span');
-        ripple.className = 'btn-ripple';
-        const rect = btn.getBoundingClientRect();
-        ripple.style.left = (e.clientX - rect.left) + 'px';
-        ripple.style.top = (e.clientY - rect.top) + 'px';
-        btn.appendChild(ripple);
-        setTimeout(() => ripple.remove(), 600);
-      }
-      const el = document.createElement('span');
-      el.className = 'click-burst';
-      el.textContent = petals[Math.floor(Math.random() * petals.length)];
-      el.style.left = e.clientX + 'px';
-      el.style.top = e.clientY + 'px';
-      document.body.appendChild(el);
-      setTimeout(() => el.remove(), 700);
-    });
-  })();
+  // ---- 樱花/粒子/点击特效已移除（性能优化：持续创建销毁 DOM 导致页面卡顿）----
 
   // ---- 3D 倾斜卡片 ----
   instanceGrid.addEventListener('mousemove', (e) => {
@@ -1860,38 +2100,29 @@
     if (card) card.style.transform = '';
   });
 
-  // ---- v3 视图切换（集成进主界面）----
-  function enterV3View() {
-    if (!v3View) return;
-    closeDrawer();
-    if (toolbarEl) toolbarEl.classList.add('hidden');
-    instanceGrid.classList.add('hidden');
-    emptyState.classList.add('hidden');
-    v3View.classList.remove('hidden');
-    v3Toggle.textContent = '🚀 v3 增强';
-    if (window.MccPanel && window.MccPanel.v3) window.MccPanel.v3.onShown();
+  // ---- 主页标签页切换（实例 / 增强），v3 功能集成在主页内，不再单独开视图 ----
+  const mainTabInstances = $('#main-tab-instances');
+  const mainTabV3 = $('#main-tab-v3');
+
+  function showMainTab(name) {
+    const isV3 = name === 'v3';
+    if (isV3 && !v3View) return;
+    if (isV3) closeDrawer();
+    if (toolbarEl) toolbarEl.classList.toggle('hidden', isV3);
+    instanceGrid.classList.toggle('hidden', isV3);
+    emptyState.classList.toggle('hidden', isV3 || instances.length > 0);
+    v3View.classList.toggle('hidden', !isV3);
+    if (mainTabInstances) mainTabInstances.classList.toggle('active', !isV3);
+    if (mainTabV3) mainTabV3.classList.toggle('active', isV3);
+    if (isV3) {
+      if (window.MccPanel && window.MccPanel.v3) window.MccPanel.v3.onShown();
+    } else {
+      loadInstances(); // 返回实例页时刷新列表（empty-state 显隐由 loadInstances 管理）
+    }
   }
 
-  function exitV3View() {
-    if (!v3View) return;
-    v3View.classList.add('hidden');
-    if (toolbarEl) toolbarEl.classList.remove('hidden');
-    instanceGrid.classList.remove('hidden');
-    // empty-state 的显隐由 loadInstances 管理
-  }
-
-  if (v3Toggle) {
-    v3Toggle.addEventListener('click', () => {
-      if (v3View.classList.contains('hidden')) enterV3View();
-      else exitV3View();
-    });
-  }
-  if (v3Back) {
-    v3Back.addEventListener('click', () => {
-      exitV3View();
-      loadInstances();
-    });
-  }
+  if (mainTabInstances) mainTabInstances.addEventListener('click', () => showMainTab('instances'));
+  if (mainTabV3) mainTabV3.addEventListener('click', () => showMainTab('v3'));
 
   // ---- 启动 ----
   init();

@@ -14,7 +14,7 @@
   <!-- 登录遮罩 -->
   <div id="login-overlay" class="login-overlay hidden">
     <form id="login-form" class="login-card" autocomplete="off">
-      <div class="login-logo">🐾</div>
+      <div class="login-logo">YAYA</div>
       <h1 id="login-title">YAYA MCC BOT</h1>
       <p class="login-sub">BOT CONTROL SYSTEM</p>
       <input type="text" id="login-user" class="login-input" placeholder="账号" autocomplete="username" autofocus>
@@ -28,7 +28,11 @@
   <div id="app" class="app hidden">
     <header class="topbar">
       <div class="topbar-left">
-        <span class="brand">🐾 <span id="brand-title">YAYA MCC BOT</span></span>
+        <span class="brand"><span id="brand-title">YAYA MCC BOT</span></span>
+        <nav class="main-tabs" id="main-tabs">
+          <button id="main-tab-instances" class="main-tab active" title="实例列表">实例</button>
+          <button id="main-tab-v3" class="main-tab" title="健康监控/自动化/MCC魔改/导入导出/操作日志">增强</button>
+        </nav>
         <span id="conn-status" class="conn-status"></span>
       </div>
       <div class="topbar-right">
@@ -36,10 +40,10 @@
         <select id="daemon-select" class="select" title="MCSM 远程节点"></select>
         <span id="perf-status" class="perf-status" title="节点 CPU / 内存占用">--</span>
         <input type="search" id="search-input" class="input search-input" placeholder="按名称搜索…">
-        <button id="refresh-btn" class="btn" title="刷新">🔄 刷新</button>
+        <button id="refresh-btn" class="btn" title="刷新">刷新</button>
+        <button id="users-btn" class="btn btn-ghost hidden" title="用户管理（仅最早的管理员可注册新用户）">用户</button>
         <button id="oplog-btn" class="btn btn-ghost" title="查看操作日志">操作日志</button>
-        <button id="v3-toggle" class="btn btn-ghost" title="v3 增强功能（健康监控/自动化/MCC魔改/导入导出）">🚀 v3 增强</button>
-        <button id="theme-toggle" class="btn btn-ghost" title="切换黑夜/白天模式">🌙</button>
+        <button id="theme-toggle" class="btn btn-ghost" title="切换黑夜/白天模式">主题</button>
         <button id="logout-btn" class="btn btn-ghost" title="退出登录">退出</button>
       </div>
     </header>
@@ -53,10 +57,10 @@
       <div class="toolbar-actions">
         <button id="batch-start" class="btn btn-sm need-admin" title="批量启动">▶ 启动</button>
         <button id="batch-stop" class="btn btn-sm need-admin" title="批量停止">■ 停止</button>
-        <button id="batch-restart" class="btn btn-sm need-admin" title="批量重启">↻ 重启</button>
-        <button id="batch-delete" class="btn btn-sm btn-danger need-admin" title="批量删除选中实例">🗑 删除</button>
-        <button id="node-file-btn" class="btn btn-sm need-admin" title="管理节点文件系统">📁 节点文件</button>
-        <button id="template-btn" class="btn btn-sm need-admin" title="内置 MCC 模板管理">📦 模板</button>
+        <button id="batch-restart" class="btn btn-sm need-admin" title="批量重启">重启</button>
+        <button id="batch-delete" class="btn btn-sm btn-danger need-admin" title="批量删除选中实例">删除</button>
+        <button id="node-file-btn" class="btn btn-sm need-admin" title="管理节点文件系统">节点文件</button>
+        <button id="template-btn" class="btn btn-sm need-admin" title="内置 MCC 模板管理">模板</button>
         <button id="create-instance-btn" class="btn btn-sm btn-primary need-admin" title="创建新的 MCC 实例">＋ 创建实例</button>
       </div>
       <span id="list-summary" class="list-summary"></span>
@@ -65,21 +69,19 @@
     <main class="content">
       <div id="instance-grid" class="instance-grid"></div>
       <div id="empty-state" class="empty-state hidden">
-        <div class="empty-icon">🗂️</div>
+        <div class="empty-icon"></div>
         <p id="empty-text">暂无实例</p>
       </div>
 
-      <!-- ===================== v3 增强面板（集成进主界面） ===================== -->
+      <!-- ===================== v3 增强面板（主页「增强」标签页） ===================== -->
       <div id="v3-view" class="v3-view hidden">
         <div class="v3-header">
-          <h2 class="v3-title">🚀 v3 增强功能</h2>
+          <h2 class="v3-title">增强功能</h2>
           <span id="v3-user" class="v3-user"></span>
-          <button id="v3-back" class="btn btn-sm btn-ghost" title="返回实例列表">← 返回实例列表</button>
         </div>
         <nav class="v3-tabs">
           <button class="v3-tab active" data-v3tab="overview">总览</button>
           <button class="v3-tab" data-v3tab="automation">自动化</button>
-          <button class="v3-tab" data-v3tab="mccmod">MCC 魔改</button>
           <button class="v3-tab" data-v3tab="transfer">导入导出</button>
           <button class="v3-tab" data-v3tab="oplog">操作日志</button>
         </nav>
@@ -157,73 +159,7 @@
           </div>
         </section>
 
-        <!-- MCC 魔改 -->
-        <section id="v3-mccmod" class="v3-panel hidden">
-          <div class="v3-select-row">
-            <span class="panel-hint">选择实例：</span>
-            <select id="v3-mod-instance" class="select"></select>
-            <button id="v3-mod-reload" class="btn btn-sm">刷新</button>
-            <span id="v3-mod-instance-info" class="panel-hint"></span>
-          </div>
-
-          <div class="v3-section-title">自定义聊天指令（matches.ini · AutoRespond）</div>
-          <p class="panel-hint">聊天里出现触发词时自动执行动作，例如：触发词 <code>!home</code>，动作 <code>send /home</code>。保存后写入实例的 matches.ini，无需重启（AutoRespond 实时生效）。</p>
-          <table class="v3-table" id="v3-cmd-table">
-            <thead><tr><th>触发词</th><th>动作</th><th>冷却(秒)</th><th>启用</th><th></th></tr></thead>
-            <tbody></tbody>
-          </table>
-          <div class="v3-btn-row">
-            <button id="v3-cmd-add" class="btn btn-sm need-admin">＋ 添加指令</button>
-            <button id="v3-cmd-save" class="btn btn-sm btn-primary need-admin">保存指令</button>
-            <span id="v3-cmd-result" class="command-result"></span>
-          </div>
-
-          <div class="v3-section-title">多服务器切换（servers.txt）</div>
-          <p class="panel-hint">管理 servers.txt 服务器列表；「切换」会更新 ini 的 Server 并发送 MCC 内部命令 <code>connect &lt;别名&gt;</code>（运行中即时切换，未运行则下次启动生效）。</p>
-          <table class="v3-table" id="v3-server-table">
-            <thead><tr><th>别名</th><th>地址</th><th>端口</th><th></th><th></th></tr></thead>
-            <tbody></tbody>
-          </table>
-          <div class="v3-btn-row">
-            <button id="v3-server-add" class="btn btn-sm need-admin">＋ 添加服务器</button>
-            <button id="v3-server-save" class="btn btn-sm btn-primary need-admin">保存列表</button>
-            <span id="v3-server-result" class="command-result"></span>
-          </div>
-
-          <div class="v3-section-title">原生功能注入（AntiAFK / AutoRelog / 脚本调度）</div>
-          <p class="panel-hint">直接修改实例 MinecraftClient.ini 的相关段。保存后<strong>需要重启实例</strong>生效。</p>
-          <form id="v3-mod-form" class="v3-form">
-            <div class="v3-form-grid">
-              <fieldset class="v3-fieldset">
-                <legend>AntiAFK 防挂机</legend>
-                <label class="check-all"><input type="checkbox" id="v3-mod-antiafk"><span>启用 AntiAFK</span></label>
-                <label class="form-label">间隔（10 tick ≈ 1 秒）
-                  <input type="number" id="v3-mod-antiafk-delay" class="input" value="600">
-                </label>
-                <label class="form-label">命令
-                  <input type="text" id="v3-mod-antiafk-cmd" class="input mono-input" value="/ping">
-                </label>
-              </fieldset>
-              <fieldset class="v3-fieldset">
-                <legend>AutoRelog 掉线自动重连（MCC 原生）</legend>
-                <label class="check-all"><input type="checkbox" id="v3-mod-autorelog"><span>启用 AutoRelog</span></label>
-                <label class="form-label">重试次数（-1 = 无限）
-                  <input type="number" id="v3-mod-autorelog-retries" class="input" value="5">
-                </label>
-                <label class="check-all"><input type="checkbox" id="v3-mod-autorelog-ignore"><span>忽略踢出原因全部重连</span></label>
-              </fieldset>
-            </div>
-            <button type="submit" class="btn btn-primary need-admin">应用原生功能配置</button>
-            <span id="v3-mod-result" class="command-result"></span>
-          </form>
-
-          <div class="v3-section-title">挂机脚本模板</div>
-          <div class="v3-btn-row">
-            <button id="v3-script-idle" class="btn btn-sm need-admin">生成挂机脚本 idle.txt</button>
-            <button id="v3-script-tasks" class="btn btn-sm need-admin">生成调度任务模板 tasks.txt</button>
-            <span id="v3-script-result" class="command-result"></span>
-          </div>
-        </section>
+        <!-- MCC 魔改已移入实例抽屉「魔改」tab（针对当前实例直接操作） -->
 
         <!-- 导入导出 -->
         <section id="v3-transfer" class="v3-panel hidden">
@@ -284,11 +220,11 @@
         <h2 id="drawer-title">实例详情</h2>
       </div>
       <div class="drawer-actions">
-        <button id="drawer-start" class="btn btn-sm need-admin">▶ 启动</button>
-        <button id="drawer-stop" class="btn btn-sm need-admin">■ 停止</button>
-        <button id="drawer-restart" class="btn btn-sm need-admin">↻ 重启</button>
-        <button id="drawer-kill" class="btn btn-sm btn-danger need-admin" title="强制终止">✕ 强杀</button>
-        <button id="drawer-delete" class="btn btn-sm btn-danger need-admin" title="删除实例">🗑 删除</button>
+        <button id="drawer-start" class="btn btn-sm need-admin">启动</button>
+        <button id="drawer-stop" class="btn btn-sm need-admin">停止</button>
+        <button id="drawer-restart" class="btn btn-sm need-admin">重启</button>
+        <button id="drawer-kill" class="btn btn-sm btn-danger need-admin" title="强制终止">强杀</button>
+        <button id="drawer-delete" class="btn btn-sm btn-danger need-admin" title="删除实例">删除</button>
         <button id="drawer-close" class="btn btn-sm btn-ghost">关闭</button>
       </div>
     </div>
@@ -299,6 +235,7 @@
       <button class="tab" data-tab="command">命令</button>
       <button class="tab" data-tab="inventory">背包</button>
       <button class="tab" data-tab="scripts">脚本</button>
+      <button class="tab" data-tab="mod">魔改</button>
       <button class="tab" data-tab="config">配置</button>
       <button class="tab" data-tab="files">文件</button>
     </nav>
@@ -307,6 +244,11 @@
       <!-- 日志 -->
       <section id="tab-log" class="tab-panel">
         <div class="panel-toolbar">
+          <div class="log-filter" id="log-filter" title="按类型过滤日志：聊天 = 玩家发言，系统 = MCC 命令反馈与状态信息">
+            <button class="log-chip active" data-logfilter="all">全部</button>
+            <button class="log-chip" data-logfilter="chat">聊天</button>
+            <button class="log-chip" data-logfilter="system">系统</button>
+          </div>
           <label class="check-all"><input type="checkbox" id="log-autoscroll" checked><span>自动滚动</span></label>
           <label class="check-all"><input type="checkbox" id="log-live" checked><span>实时刷新</span></label>
           <span id="log-size" class="list-summary"></span>
@@ -347,8 +289,89 @@
         </div>
       </section>
 
+      <!-- 魔改（针对当前实例的 MCC 配置增强） -->
+      <section id="tab-mod" class="tab-panel hidden">
+        <p class="panel-hint">针对当前实例的 MCC 魔改配置：自定义聊天指令、多服务器切换、原生功能注入与挂机脚本模板。</p>
+        <div class="v3-btn-row">
+          <button id="v3-mod-reload" class="btn btn-sm need-admin">刷新</button>
+          <span id="v3-mod-instance-info" class="panel-hint"></span>
+        </div>
+
+        <div class="v3-section-title">自定义聊天指令（matches.ini · AutoRespond）</div>
+        <p class="panel-hint">聊天里出现触发词时自动执行动作，例如：触发词 <code>!home</code>，动作 <code>send /home</code>。保存后写入实例的 matches.ini，无需重启（AutoRespond 实时生效）。</p>
+        <div class="v3-table-wrap">
+        <table class="v3-table" id="v3-cmd-table">
+          <thead><tr><th>触发词</th><th>动作</th><th>冷却(秒)</th><th>启用</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        </div>
+        <div class="v3-btn-row">
+          <button id="v3-cmd-add" class="btn btn-sm need-admin">＋ 添加指令</button>
+          <button id="v3-cmd-save" class="btn btn-sm btn-primary need-admin">保存指令</button>
+          <span id="v3-cmd-result" class="command-result"></span>
+        </div>
+
+        <div class="v3-section-title">多服务器切换（servers.txt）</div>
+        <p class="panel-hint">管理 servers.txt 服务器列表；「切换」会更新 ini 的 Server 并发送 MCC 内部命令 <code>connect &lt;别名&gt;</code>（运行中即时切换，未运行则下次启动生效）。</p>
+        <div class="v3-table-wrap">
+        <table class="v3-table" id="v3-server-table">
+          <thead><tr><th>别名</th><th>地址</th><th>端口</th><th></th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        </div>
+        <div class="v3-btn-row">
+          <button id="v3-server-add" class="btn btn-sm need-admin">＋ 添加服务器</button>
+          <button id="v3-server-save" class="btn btn-sm btn-primary need-admin">保存列表</button>
+          <span id="v3-server-result" class="command-result"></span>
+        </div>
+
+        <div class="v3-section-title">原生功能注入（AntiAFK / AutoRelog）</div>
+        <p class="panel-hint">直接修改实例 MinecraftClient.ini 的相关段。保存后<strong>需要重启实例</strong>生效。</p>
+        <form id="v3-mod-form" class="v3-form">
+          <div class="v3-form-grid">
+            <fieldset class="v3-fieldset">
+              <legend>AntiAFK 防挂机</legend>
+              <label class="check-all"><input type="checkbox" id="v3-mod-antiafk"><span>启用 AntiAFK</span></label>
+              <label class="form-label">间隔（秒）
+                <input type="number" id="v3-mod-antiafk-delay" class="input" value="600">
+              </label>
+              <label class="form-label">命令
+                <input type="text" id="v3-mod-antiafk-cmd" class="input mono-input" value="/ping">
+              </label>
+            </fieldset>
+            <fieldset class="v3-fieldset">
+              <legend>AutoRelog 掉线自动重连（MCC 原生）</legend>
+              <label class="check-all"><input type="checkbox" id="v3-mod-autorelog"><span>启用 AutoRelog</span></label>
+              <label class="form-label">重试次数（-1 = 无限）
+                <input type="number" id="v3-mod-autorelog-retries" class="input" value="5">
+              </label>
+              <label class="check-all"><input type="checkbox" id="v3-mod-autorelog-ignore"><span>忽略踢出原因全部重连</span></label>
+            </fieldset>
+          </div>
+          <button type="submit" class="btn btn-primary need-admin">应用原生功能配置</button>
+          <span id="v3-mod-result" class="command-result"></span>
+        </form>
+
+        <div class="v3-section-title">挂机脚本模板</div>
+        <div class="v3-btn-row">
+          <button id="v3-script-idle" class="btn btn-sm need-admin">生成挂机脚本 idle.txt</button>
+          <button id="v3-script-tasks" class="btn btn-sm need-admin">生成调度任务模板 tasks.txt</button>
+          <span id="v3-script-result" class="command-result"></span>
+        </div>
+      </section>
+
       <!-- 配置 -->
       <section id="tab-config" class="tab-panel hidden">
+        <div class="settings-panel" id="ini-settings-panel">
+          <div class="settings-toolbar">
+            <span class="panel-hint">MinecraftClient.ini 可视化设置（手机设置风格，保存后多数需重启实例生效）</span>
+            <button id="settings-reload" class="btn btn-sm need-admin">刷新</button>
+            <button id="settings-save" class="btn btn-sm btn-primary need-admin">保存设置</button>
+            <span id="settings-result" class="command-result"></span>
+          </div>
+          <div id="settings-groups"></div>
+        </div>
+
         <p class="panel-hint">实例配置表单，保存后立即生效；修改启动命令前建议先停止实例。</p>
         <div class="config-form">
           <label class="form-label">实例名称 · nickname
@@ -489,6 +512,42 @@
     </div>
   </div>
 
+  <!-- 用户管理模态框（仅最早的管理员可注册新用户） -->
+  <div id="users-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-head">
+        <h2 class="modal-title">用户管理</h2>
+        <div class="modal-actions">
+          <button id="users-close" class="btn btn-ghost">关闭</button>
+        </div>
+      </div>
+      <div id="users-list" class="oplog-list"></div>
+      <form id="users-register-form" class="command-form">
+        <div class="config-checks">
+          <label class="form-label">新用户名
+            <input type="text" id="users-new-name" class="input" placeholder="2-32 位字母/数字/下划线" autocomplete="off">
+          </label>
+          <label class="form-label">密码（至少 6 位）
+            <input type="password" id="users-new-password" class="input" autocomplete="new-password">
+          </label>
+          <label class="form-label">确认密码
+            <input type="password" id="users-new-password2" class="input" autocomplete="new-password">
+          </label>
+          <label class="form-label">角色
+            <select id="users-new-role" class="select">
+              <option value="readonly">只读（仅查看）</option>
+              <option value="admin">管理员（全部权限）</option>
+            </select>
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button type="submit" class="btn btn-primary">注册用户</button>
+          <span id="users-result" class="command-result"></span>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- 内置 MCC 模板模态框 -->
   <div id="template-overlay" class="modal-overlay hidden">
     <div class="modal modal-wide">
@@ -533,7 +592,10 @@
         </label>
         <label class="check-all">
           <input type="checkbox" id="create-tpa" checked>
-          <span>自动接取 tpa / tphere 传送（AutoRespond）</span>
+          <span>自动接取 tpa / tphere 传送</span>
+        </label>
+        <label class="form-label" id="create-tpa-regex-label">tpa 触发正则（按服务器插件提示文本修改）
+          <input type="text" id="create-tpa-regex" class="input mono-input" placeholder="留空 = 通用中英文正则（请求传送|wants to teleport to you）">
         </label>
         <div id="create-result" class="command-result"></div>
         <div class="modal-actions">
