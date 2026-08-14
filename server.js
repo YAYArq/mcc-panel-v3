@@ -8,6 +8,10 @@ const { execFileSync, execSync } = require('child_process');
 
 const { loadConfig } = require('./lib/config');
 const { McsmClient } = require('./lib/mcsm-client');
+const store = require('./lib/store');
+const { HealthTracker } = require('./lib/health');
+const { AutomationEngine } = require('./lib/automation');
+const { handleV3Route } = require('./lib/v3-routes');
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const MAX_BODY_BYTES = 1 * 1024 * 1024; // 1 MiB
@@ -28,13 +32,13 @@ const MIME_TYPES = {
 };
 
 // ---------------------------------------------------------------------------
-// 访问口令会话
+// 访问口令会话（v3 起带角色 role：admin / readonly）
 // ---------------------------------------------------------------------------
-const sessions = new Map(); // token -> { username, expiry }
+const sessions = new Map(); // token -> { username, role, expiry }
 
-function issueSession(username) {
+function issueSession(username, role) {
   const token = crypto.randomBytes(32).toString('hex');
-  sessions.set(token, { username: username || '', expiry: Date.now() + SESSION_TTL_MS });
+  sessions.set(token, { username: username || '', role: role === 'readonly' ? 'readonly' : 'admin', expiry: Date.now() + SESSION_TTL_MS });
   return token;
 }
 
@@ -54,6 +58,14 @@ function getSessionUser(token) {
   return s.username || null;
 }
 
+/** 获取会话完整信息（含角色），用于权限判断与 v3 路由。 */
+function getSessionInfo(token) {
+  if (!token || !sessions.has(token)) return null;
+  const s = sessions.get(token);
+  if (s.expiry < Date.now()) { sessions.delete(token); return null; }
+  return { username: s.username || '', role: s.role || 'admin' };
+}
+
 function readBearerToken(req) {
   const auth = req.headers['authorization'] || '';
   if (auth.startsWith('Bearer ')) return auth.slice(7).trim();
@@ -62,11 +74,42 @@ function readBearerToken(req) {
   return match ? decodeURIComponent(match[1]) : '';
 }
 
-// 操作日志（内存，最多 500 条）
+// ---- IP 白名单（v3 安全增强）----
+function clientIp(req, config) {
+  if (config && config.trustProxy) {
+    const xff = req.headers['x-forwarded-for'];
+    if (xff) return String(xff).split(',')[0].trim();
+  }
+  const addr = req.socket.remoteAddress || '';
+  return addr.startsWith('::ffff:') ? addr.slice(7) : addr;
+}
+
+function ipAllowed(req, config) {
+  if (!config || !config.ipWhitelistEnabled) return true;
+  const list = (config.ipWhitelist || []).map((x) => String(x).trim()).filter(Boolean);
+  if (list.length === 0) return false; // 启用了但未配置 IP = 拒绝所有
+  return list.includes(clientIp(req, config));
+}
+
+// 操作日志（内存 + data/logs.jsonl 持久化，最多 10000 条）
 const operationLogs = [];
+const LOGS_MAX = 10000;
+// 启动时加载历史日志（供 v3 筛选/导出）
+(function loadOperationLogs() {
+  try {
+    operationLogs.push(...store.readLines('logs.jsonl', LOGS_MAX));
+  } catch (e) { /* 忽略 */ }
+})();
 function logOperation(user, action, detail) {
-  operationLogs.push({ time: Date.now(), user: user || '-', action, detail: detail || '' });
-  if (operationLogs.length > 500) operationLogs.shift();
+  const entry = { time: Date.now(), user: user || '-', action, detail: detail || '' };
+  operationLogs.push(entry);
+  try {
+    store.appendLine('logs.jsonl', entry);
+    if (operationLogs.length > LOGS_MAX) {
+      operationLogs.splice(0, operationLogs.length - LOGS_MAX);
+      store.truncateLines('logs.jsonl', LOGS_MAX);
+    }
+  } catch (e) { /* 持久化失败不阻塞请求 */ }
 }
 
 // ---------------------------------------------------------------------------
@@ -688,18 +731,31 @@ function createServer(options = {}) {
   const users = Array.isArray(config.users) ? config.users : [];
   const authEnabled = Boolean(config.authToken || users.length > 0);
 
+  // ---- v3：健康监控 + 自动化引擎 ----
+  const health = new HealthTracker();
+  const engine = new AutomationEngine({ mcsm, config, health, logOperation });
+  setTimeout(() => engine.start(), 1500); // 等服务监听就绪后启动后台循环
+
   function verifyLogin(username, password) {
     if (users.length > 0) {
       const u = users.find((x) => x && x.username === username && x.password === password);
-      return u ? u.username : null;
+      return u ? { username: u.username, role: u.role === 'readonly' ? 'readonly' : 'admin' } : null;
     }
-    // 单口令兼容模式
-    if (config.authToken && password === config.authToken) return username || 'admin';
+    // 单口令兼容模式：登录者视为管理员
+    if (config.authToken && password === config.authToken) return { username: username || 'admin', role: 'admin' };
     return null;
   }
 
   return http.createServer(async (req, res) => {
     try {
+      // ---- IP 白名单（服务器级，含静态资源与健康检查）----
+      if (!ipAllowed(req, config)) {
+        setSecurityHeaders(res);
+        res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, status: 403, data: null, error: 'IP 不在白名单内' }));
+        return;
+      }
+
       const url = new URL(req.url || '/', 'http://127.0.0.1');
       const pathname = url.pathname;
       const method = req.method.toUpperCase();
@@ -715,9 +771,9 @@ function createServer(options = {}) {
         const password = String(body.password || '');
         const user = verifyLogin(username, password);
         if (user) {
-          const token = issueSession(user);
-          logOperation(user, '登录', '登录面板');
-          sendJson(res, 200, { ok: true, token, title: config.title, authed: true, user });
+          const token = issueSession(user.username, user.role);
+          logOperation(user.username, '登录', '登录面板');
+          sendJson(res, 200, { ok: true, token, title: config.title, authed: true, user: user.username, role: user.role });
         } else {
           sendJson(res, 401, { ok: false, error: '账号或密码错误' });
         }
@@ -735,8 +791,9 @@ function createServer(options = {}) {
 
       if (method === 'GET' && pathname === '/api/auth/status') {
         const token = readBearerToken(req);
+        const info = getSessionInfo(token);
         const authed = !authEnabled || isSessionValid(token);
-        sendJson(res, 200, { ok: true, authed, title: config.title, user: authed ? getSessionUser(token) : null });
+        sendJson(res, 200, { ok: true, authed, title: config.title, user: authed ? (info ? info.username : null) : null, role: authed ? (info ? info.role : null) : null });
         return;
       }
 
@@ -764,7 +821,14 @@ function createServer(options = {}) {
           sendJson(res, 401, { ok: false, error: '未登录或会话已过期' });
           return;
         }
-        const operator = getSessionUser(token) || '';
+        const operatorInfo = getSessionInfo(token) || { username: '', role: 'admin' };
+        const operator = operatorInfo.username;
+
+        // ---- v3 权限分级：readonly 禁止一切写操作 ----
+        if (operatorInfo.role === 'readonly' && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+          sendJson(res, 403, { ok: false, error: '只读账号无权执行此操作' });
+          return;
+        }
 
         // 操作日志查询
         if (method === 'GET' && pathname === '/api/operation-logs') {
@@ -823,6 +887,29 @@ function createServer(options = {}) {
         const body = (method === 'POST' || method === 'PUT' || method === 'PATCH')
           ? await readJsonBody(req)
           : {};
+
+        // ---- v3 增强路由（/api/v3/*）----
+        const v3Result = await handleV3Route({
+          method,
+          pathname,
+          query: Object.fromEntries(url.searchParams.entries()),
+          body,
+          mcsm,
+          config,
+          engine,
+          health,
+          operator,
+          role: operatorInfo.role,
+          logOperation,
+          operationLogs,
+          createMcsmInstance,
+          panelConfig: config
+        });
+        if (v3Result !== null) {
+          sendJson(res, v3Result.ok ? 200 : (v3Result.status || 502), v3Result);
+          return;
+        }
+
         const result = await proxyRoute(mcsm, {
           pathname,
           query: Object.fromEntries(url.searchParams.entries()),

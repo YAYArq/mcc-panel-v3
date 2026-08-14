@@ -99,22 +99,29 @@ install_node
 
 # ---------- 3. 部署文件 ----------
 log "部署文件到 $INSTALL_DIR ..."
-mkdir -p "$INSTALL_DIR"
+mkdir -p "$INSTALL_DIR" "$INSTALL_DIR/data"
 cp -r "$SRC_DIR/server.js" \
       "$SRC_DIR/lib" \
       "$SRC_DIR/public" \
       "$SRC_DIR/package.json" \
       "$SRC_DIR/README.md" \
       "$INSTALL_DIR/"
+chmod 700 "$INSTALL_DIR/data"
 
 # ---------- 4. 生成配置（用 node 做 JSON 转义，避免特殊字符问题） ----------
-log "写入配置 ..."
-CFG_PATH="$INSTALL_DIR/panel.config.json" \
-MCSM_URL="$MCSM_URL" \
-MCSM_APIKEY="$MCSM_APIKEY" \
-PANEL_PORT="$PANEL_PORT" \
-PANEL_AUTH_TOKEN="$PANEL_AUTH_TOKEN" \
-node -e '
+CFG_PATH="$INSTALL_DIR/panel.config.json"
+if [[ -f "$CFG_PATH" ]]; then
+  # 升级场景：保留已有配置（含真实密钥），不覆盖
+  warn "检测到已有 $CFG_PATH，保留原配置（升级模式）。"
+  warn "如确认使用新配置，请先备份后删除该文件再运行本脚本。"
+else
+  log "写入配置 ..."
+  CFG_PATH="$CFG_PATH" \
+  MCSM_URL="$MCSM_URL" \
+  MCSM_APIKEY="$MCSM_APIKEY" \
+  PANEL_PORT="$PANEL_PORT" \
+  PANEL_AUTH_TOKEN="$PANEL_AUTH_TOKEN" \
+  node -e '
 const fs = require("fs");
 const cfg = {
   host: "0.0.0.0",
@@ -127,12 +134,20 @@ const cfg = {
     timeoutMs: 15000
   },
   logPollIntervalMs: 2000,
-  listPollIntervalMs: 4000
+  listPollIntervalMs: 4000,
+  v3: {
+    enabled: true,
+    healthPollIntervalMs: 15000
+  },
+  ipWhitelistEnabled: false,
+  ipWhitelist: [],
+  trustProxy: false
 };
 fs.writeFileSync(process.env.CFG_PATH, JSON.stringify(cfg, null, 2) + "\n");
 '
-chmod 600 "$INSTALL_DIR/panel.config.json"
-log "配置文件已写入 $INSTALL_DIR/panel.config.json"
+  chmod 600 "$INSTALL_DIR/panel.config.json"
+  log "配置文件已写入 $INSTALL_DIR/panel.config.json"
+fi
 
 # ---------- 5. 注册 systemd 服务 ----------
 NODE_BIN="$(command -v node)"

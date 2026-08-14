@@ -1,0 +1,100 @@
+/* ============================================================
+   v3 增强面板样式（复用 app.css 的主题变量，深色/浅色自适应）
+   ============================================================ */
+
+/* ---- 只读权限：隐藏所有需要管理员权限的按钮 ---- */
+body.readonly .need-admin { display: none !important; }
+
+/* ---- 面板容器 ---- */
+.v3-view { padding: 18px 0 40px; }
+
+.v3-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.v3-title { font-size: 20px; margin: 0; font-weight: 900; letter-spacing: 0.5px; }
+.v3-user { margin-left: auto; font-size: 12px; color: var(--muted, #9a8fb8); }
+.v3-user .v3-role { margin-left: 6px; padding: 2px 8px; border-radius: 999px; font-size: 11px;
+  background: var(--bg-elev-2); border: 1px solid var(--border); }
+.v3-user .v3-role.readonly { color: #ffb02e; border-color: #ffb02e55; }
+
+/* ---- 顶部 tab ---- */
+.v3-tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-bottom: 16px; flex-wrap: wrap; }
+.v3-tab {
+  padding: 8px 16px; background: transparent; color: var(--muted, #9a8fb8);
+  border: 1px solid transparent; border-bottom: none; border-radius: 10px 10px 0 0;
+  cursor: pointer; font-size: 14px; font-weight: 700;
+}
+.v3-tab:hover { color: var(--accent); }
+.v3-tab.active { color: var(--accent); background: var(--bg-elev); border-color: var(--border); }
+
+/* ---- 面板区块 ---- */
+.v3-panel { animation: v3fade 0.25s ease; }
+@keyframes v3fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+.v3-section-title {
+  font-size: 15px; font-weight: 900; margin: 22px 0 10px; padding-left: 10px;
+  border-left: 3px solid var(--accent); display: flex; align-items: center; gap: 8px;
+}
+.v3-panel-hint { color: var(--muted, #9a8fb8); font-size: 12px; margin: 4px 0 10px; }
+
+/* ---- 统计卡片 ---- */
+.v3-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 8px; }
+.v3-card {
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: 12px;
+  padding: 16px; text-align: center;
+}
+.v3-card-num { font-size: 26px; font-weight: 900; color: var(--accent); }
+.v3-card-label { font-size: 12px; color: var(--muted, #9a8fb8); margin-top: 4px; }
+
+/* ---- 表格 ---- */
+.v3-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+.v3-table { width: 100%; border-collapse: collapse; font-size: 13px; background: var(--bg-elev); }
+.v3-table th, .v3-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.v3-table th { background: var(--bg-elev-2); font-weight: 700; color: var(--muted, #9a8fb8); font-size: 12px; }
+.v3-table tr:last-child td { border-bottom: none; }
+.v3-table tbody tr:hover { background: var(--bg-elev-2); }
+.v3-table td .mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+.v3-table .v3-actions { display: flex; gap: 6px; }
+.v3-table .v3-actions .btn { padding: 3px 8px; font-size: 12px; }
+
+/* 状态徽标 */
+.v3-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.v3-badge.running { background: #2ec27e22; color: #2ec27e; border: 1px solid #2ec27e55; }
+.v3-badge.stopped { background: #9a8fb822; color: #9a8fb8; border: 1px solid #9a8fb855; }
+.v3-badge.busy { background: #ffb02e22; color: #ffb02e; border: 1px solid #ffb02e55; }
+.v3-badge.ok { background: #2ec27e22; color: #2ec27e; }
+.v3-badge.err { background: #ff5f7a22; color: #ff5f7a; }
+
+/* ---- 消息统计条形图（纯 CSS）---- */
+.v3-bars { display: flex; align-items: flex-end; gap: 4px; height: 90px; padding: 10px 4px 0; border-bottom: 1px solid var(--border); }
+.v3-bar { flex: 1; min-width: 8px; background: linear-gradient(180deg, var(--accent), var(--blue, #7eb3ff));
+  border-radius: 3px 3px 0 0; position: relative; min-height: 2px; opacity: 0.85; }
+.v3-bar:hover { opacity: 1; }
+.v3-bar .v3-bar-tip { position: absolute; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%);
+  background: var(--bg-elev-2); border: 1px solid var(--border); padding: 2px 6px; border-radius: 6px;
+  font-size: 11px; white-space: nowrap; display: none; z-index: 5; }
+.v3-bar:hover .v3-bar-tip { display: block; }
+.v3-bars-empty { color: var(--muted, #9a8fb8); font-size: 12px; padding: 20px 0; text-align: center; }
+
+/* ---- 表单 ---- */
+.v3-form { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; max-width: 720px; }
+.v3-form .form-label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted, #9a8fb8); }
+.v3-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.v3-fieldset { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.v3-fieldset legend { font-size: 13px; font-weight: 700; color: var(--accent); padding: 0 6px; }
+.v3-fieldset .form-label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted, #9a8fb8); }
+
+/* ---- 工具行 ---- */
+.v3-btn-row { display: flex; align-items: center; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
+.v3-select-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.v3-filter-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.v3-filter-row .input { width: 130px; }
+
+/* 文本域/编辑器复用 config-editor 风格，加一点间距 */
+.v3-panel textarea.config-editor { margin-top: 8px; }
+
+/* 实例选择下拉加宽 */
+#v3-mod-instance, #v3-clone-instance { min-width: 220px; }

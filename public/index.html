@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&family=Space+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="v3.css">
 </head>
 <body>
   <!-- 登录遮罩 -->
@@ -37,6 +38,7 @@
         <input type="search" id="search-input" class="input search-input" placeholder="按名称搜索…">
         <button id="refresh-btn" class="btn" title="刷新">🔄 刷新</button>
         <button id="oplog-btn" class="btn btn-ghost" title="查看操作日志">操作日志</button>
+        <button id="v3-toggle" class="btn btn-ghost" title="v3 增强功能（健康监控/自动化/MCC魔改/导入导出）">🚀 v3 增强</button>
         <button id="theme-toggle" class="btn btn-ghost" title="切换黑夜/白天模式">🌙</button>
         <button id="logout-btn" class="btn btn-ghost" title="退出登录">退出</button>
       </div>
@@ -49,13 +51,13 @@
       </label>
       <span id="selected-count" class="selected-count">未选择</span>
       <div class="toolbar-actions">
-        <button id="batch-start" class="btn btn-sm" title="批量启动">▶ 启动</button>
-        <button id="batch-stop" class="btn btn-sm" title="批量停止">■ 停止</button>
-        <button id="batch-restart" class="btn btn-sm" title="批量重启">↻ 重启</button>
-        <button id="batch-delete" class="btn btn-sm btn-danger" title="批量删除选中实例">🗑 删除</button>
-        <button id="node-file-btn" class="btn btn-sm" title="管理节点文件系统">📁 节点文件</button>
-        <button id="template-btn" class="btn btn-sm" title="内置 MCC 模板管理">📦 模板</button>
-        <button id="create-instance-btn" class="btn btn-sm btn-primary" title="创建新的 MCC 实例">＋ 创建实例</button>
+        <button id="batch-start" class="btn btn-sm need-admin" title="批量启动">▶ 启动</button>
+        <button id="batch-stop" class="btn btn-sm need-admin" title="批量停止">■ 停止</button>
+        <button id="batch-restart" class="btn btn-sm need-admin" title="批量重启">↻ 重启</button>
+        <button id="batch-delete" class="btn btn-sm btn-danger need-admin" title="批量删除选中实例">🗑 删除</button>
+        <button id="node-file-btn" class="btn btn-sm need-admin" title="管理节点文件系统">📁 节点文件</button>
+        <button id="template-btn" class="btn btn-sm need-admin" title="内置 MCC 模板管理">📦 模板</button>
+        <button id="create-instance-btn" class="btn btn-sm btn-primary need-admin" title="创建新的 MCC 实例">＋ 创建实例</button>
       </div>
       <span id="list-summary" class="list-summary"></span>
     </div>
@@ -65,6 +67,210 @@
       <div id="empty-state" class="empty-state hidden">
         <div class="empty-icon">🗂️</div>
         <p id="empty-text">暂无实例</p>
+      </div>
+
+      <!-- ===================== v3 增强面板（集成进主界面） ===================== -->
+      <div id="v3-view" class="v3-view hidden">
+        <div class="v3-header">
+          <h2 class="v3-title">🚀 v3 增强功能</h2>
+          <span id="v3-user" class="v3-user"></span>
+          <button id="v3-back" class="btn btn-sm btn-ghost" title="返回实例列表">← 返回实例列表</button>
+        </div>
+        <nav class="v3-tabs">
+          <button class="v3-tab active" data-v3tab="overview">总览</button>
+          <button class="v3-tab" data-v3tab="automation">自动化</button>
+          <button class="v3-tab" data-v3tab="mccmod">MCC 魔改</button>
+          <button class="v3-tab" data-v3tab="transfer">导入导出</button>
+          <button class="v3-tab" data-v3tab="oplog">操作日志</button>
+        </nav>
+
+        <!-- 总览 -->
+        <section id="v3-overview" class="v3-panel">
+          <div class="v3-cards">
+            <div class="v3-card"><div class="v3-card-num" id="v3o-total">-</div><div class="v3-card-label">实例总数</div></div>
+            <div class="v3-card"><div class="v3-card-num" id="v3o-running">-</div><div class="v3-card-label">运行中</div></div>
+            <div class="v3-card"><div class="v3-card-num" id="v3o-msgs">-</div><div class="v3-card-label">今日消息</div></div>
+            <div class="v3-card"><div class="v3-card-num" id="v3o-sched">-</div><div class="v3-card-label">定时任务</div></div>
+          </div>
+          <div class="v3-section-title">实例健康监控 <button id="v3-health-refresh" class="btn btn-sm" title="刷新">刷新</button><button id="v3-health-reset" class="btn btn-sm btn-danger need-admin" title="清空全部健康统计">重置统计</button></div>
+          <div class="v3-table-wrap">
+            <table class="v3-table" id="v3-health-table">
+              <thead><tr><th>实例</th><th>状态</th><th>当前在线</th><th>累计在线</th><th>最长在线</th><th>重启</th><th>掉线</th><th>今日消息</th><th>累计消息</th><th>最后活动</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="v3-section-title">消息统计（近 30 天）</div>
+          <div id="v3-stats-bars" class="v3-bars"></div>
+        </section>
+
+        <!-- 自动化 -->
+        <section id="v3-automation" class="v3-panel hidden">
+          <div class="v3-section-title">定时任务（cron 风格）<button id="v3-sched-new" class="btn btn-sm btn-primary need-admin">＋ 新建任务</button></div>
+          <div class="v3-table-wrap">
+            <table class="v3-table" id="v3-sched-table">
+              <thead><tr><th>名称</th><th>cron</th><th>动作</th><th>目标</th><th>状态</th><th>运行次数</th><th>上次结果</th><th>操作</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
+          <div class="v3-section-title">掉线检测自动重连</div>
+          <form id="v3-reco-form" class="v3-form">
+            <label class="check-all"><input type="checkbox" id="v3-reco-enabled"><span>启用掉线检测</span></label>
+            <label class="form-label">触发关键词（逗号分隔）
+              <input type="text" id="v3-reco-keywords" class="input mono-input" placeholder="Connection has been lost, Disconnected">
+            </label>
+            <label class="form-label">处理策略
+              <select id="v3-reco-strategy" class="select">
+                <option value="reco">先 /reco 重连，连续失败后重启</option>
+                <option value="restart">直接重启实例</option>
+              </select>
+            </label>
+            <label class="form-label">连续失败多少次后重启
+              <input type="number" id="v3-reco-max" class="input" min="1" value="3">
+            </label>
+            <label class="form-label">冷却时间（秒，同实例两次处理最小间隔）
+              <input type="number" id="v3-reco-cooldown" class="input" min="5" value="60">
+            </label>
+            <button type="submit" class="btn btn-primary need-admin">保存掉线检测配置</button>
+            <span id="v3-reco-result" class="command-result"></span>
+          </form>
+
+          <div class="v3-section-title">防 AFK（面板级兜底，周期性发送命令）</div>
+          <form id="v3-afk-form" class="v3-form">
+            <label class="check-all"><input type="checkbox" id="v3-afk-enabled"><span>启用防 AFK</span></label>
+            <label class="form-label">间隔（秒）
+              <input type="number" id="v3-afk-interval" class="input" min="10" value="300">
+            </label>
+            <label class="form-label">发送的命令
+              <input type="text" id="v3-afk-command" class="input mono-input" placeholder="/ping">
+            </label>
+            <button type="submit" class="btn btn-primary need-admin">保存防 AFK 配置</button>
+            <span id="v3-afk-result" class="command-result"></span>
+          </form>
+
+          <div class="v3-section-title">开机自启组（面板启动后按组错峰启动实例）<button id="v3-group-new" class="btn btn-sm btn-primary need-admin">＋ 新建组</button></div>
+          <div class="v3-table-wrap">
+            <table class="v3-table" id="v3-group-table">
+              <thead><tr><th>组名</th><th>实例数</th><th>启动延迟(秒)</th><th>间隔(秒)</th><th>状态</th><th>操作</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- MCC 魔改 -->
+        <section id="v3-mccmod" class="v3-panel hidden">
+          <div class="v3-select-row">
+            <span class="panel-hint">选择实例：</span>
+            <select id="v3-mod-instance" class="select"></select>
+            <button id="v3-mod-reload" class="btn btn-sm">刷新</button>
+            <span id="v3-mod-instance-info" class="panel-hint"></span>
+          </div>
+
+          <div class="v3-section-title">自定义聊天指令（matches.ini · AutoRespond）</div>
+          <p class="panel-hint">聊天里出现触发词时自动执行动作，例如：触发词 <code>!home</code>，动作 <code>send /home</code>。保存后写入实例的 matches.ini，无需重启（AutoRespond 实时生效）。</p>
+          <table class="v3-table" id="v3-cmd-table">
+            <thead><tr><th>触发词</th><th>动作</th><th>冷却(秒)</th><th>启用</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <div class="v3-btn-row">
+            <button id="v3-cmd-add" class="btn btn-sm need-admin">＋ 添加指令</button>
+            <button id="v3-cmd-save" class="btn btn-sm btn-primary need-admin">保存指令</button>
+            <span id="v3-cmd-result" class="command-result"></span>
+          </div>
+
+          <div class="v3-section-title">多服务器切换（servers.txt）</div>
+          <p class="panel-hint">管理 servers.txt 服务器列表；「切换」会更新 ini 的 Server 并发送 MCC 内部命令 <code>connect &lt;别名&gt;</code>（运行中即时切换，未运行则下次启动生效）。</p>
+          <table class="v3-table" id="v3-server-table">
+            <thead><tr><th>别名</th><th>地址</th><th>端口</th><th></th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <div class="v3-btn-row">
+            <button id="v3-server-add" class="btn btn-sm need-admin">＋ 添加服务器</button>
+            <button id="v3-server-save" class="btn btn-sm btn-primary need-admin">保存列表</button>
+            <span id="v3-server-result" class="command-result"></span>
+          </div>
+
+          <div class="v3-section-title">原生功能注入（AntiAFK / AutoRelog / 脚本调度）</div>
+          <p class="panel-hint">直接修改实例 MinecraftClient.ini 的相关段。保存后<strong>需要重启实例</strong>生效。</p>
+          <form id="v3-mod-form" class="v3-form">
+            <div class="v3-form-grid">
+              <fieldset class="v3-fieldset">
+                <legend>AntiAFK 防挂机</legend>
+                <label class="check-all"><input type="checkbox" id="v3-mod-antiafk"><span>启用 AntiAFK</span></label>
+                <label class="form-label">间隔（10 tick ≈ 1 秒）
+                  <input type="number" id="v3-mod-antiafk-delay" class="input" value="600">
+                </label>
+                <label class="form-label">命令
+                  <input type="text" id="v3-mod-antiafk-cmd" class="input mono-input" value="/ping">
+                </label>
+              </fieldset>
+              <fieldset class="v3-fieldset">
+                <legend>AutoRelog 掉线自动重连（MCC 原生）</legend>
+                <label class="check-all"><input type="checkbox" id="v3-mod-autorelog"><span>启用 AutoRelog</span></label>
+                <label class="form-label">重试次数（-1 = 无限）
+                  <input type="number" id="v3-mod-autorelog-retries" class="input" value="5">
+                </label>
+                <label class="check-all"><input type="checkbox" id="v3-mod-autorelog-ignore"><span>忽略踢出原因全部重连</span></label>
+              </fieldset>
+            </div>
+            <button type="submit" class="btn btn-primary need-admin">应用原生功能配置</button>
+            <span id="v3-mod-result" class="command-result"></span>
+          </form>
+
+          <div class="v3-section-title">挂机脚本模板</div>
+          <div class="v3-btn-row">
+            <button id="v3-script-idle" class="btn btn-sm need-admin">生成挂机脚本 idle.txt</button>
+            <button id="v3-script-tasks" class="btn btn-sm need-admin">生成调度任务模板 tasks.txt</button>
+            <span id="v3-script-result" class="command-result"></span>
+          </div>
+        </section>
+
+        <!-- 导入导出 -->
+        <section id="v3-transfer" class="v3-panel hidden">
+          <div class="v3-section-title">实例配置批量导出（JSON）</div>
+          <div class="v3-btn-row">
+            <button id="v3-export" class="btn btn-primary">导出全部实例</button>
+            <label class="check-all"><input type="checkbox" id="v3-export-ini"><span>包含 MinecraftClient.ini 内容</span></label>
+            <button id="v3-export-download" class="btn btn-sm">下载 JSON</button>
+            <span id="v3-export-result" class="command-result"></span>
+          </div>
+          <textarea id="v3-export-out" class="config-editor" spellcheck="false" placeholder="点击「导出全部实例」后这里显示导出的 JSON…"></textarea>
+
+          <div class="v3-section-title">批量导入（JSON，格式与导出一致）</div>
+          <p class="panel-hint">粘贴导出的 JSON（或导出文本的实例数组）到下方，点击导入按实例逐条创建。离线账号的登录名会按实例名自动生成。</p>
+          <textarea id="v3-import-in" class="config-editor" spellcheck="false" placeholder='{"instances": [{ "name": "bot1", "serverIp": "mc.example.com", "serverPort": 25565, "accountType": "offline", "accountLogin": "bot1" }]}'></textarea>
+          <div class="v3-btn-row">
+            <button id="v3-import" class="btn btn-primary need-admin">导入创建</button>
+            <span id="v3-import-result" class="command-result"></span>
+          </div>
+
+          <div class="v3-section-title">实例克隆</div>
+          <div class="v3-select-row">
+            <select id="v3-clone-instance" class="select"></select>
+            <input type="text" id="v3-clone-name" class="input" placeholder="新实例名，如 bot2-clone">
+            <button id="v3-clone" class="btn btn-primary need-admin">克隆实例</button>
+            <span id="v3-clone-result" class="command-result"></span>
+          </div>
+        </section>
+
+        <!-- 操作日志 -->
+        <section id="v3-oplog" class="v3-panel hidden">
+          <div class="v3-filter-row">
+            <input type="text" id="v3-ol-user" class="input" placeholder="按用户筛选">
+            <input type="text" id="v3-ol-action" class="input" placeholder="按操作筛选">
+            <input type="date" id="v3-ol-from" class="input" title="开始日期">
+            <input type="date" id="v3-ol-to" class="input" title="结束日期">
+            <button id="v3-ol-search" class="btn btn-primary">筛选</button>
+            <button id="v3-ol-export-csv" class="btn btn-sm">导出 CSV</button>
+            <button id="v3-ol-export-json" class="btn btn-sm">导出 JSON</button>
+          </div>
+          <div class="v3-table-wrap">
+            <table class="v3-table" id="v3-ol-table">
+              <thead><tr><th>时间</th><th>用户</th><th>操作</th><th>详情</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
       </div>
     </main>
   </div>
@@ -78,11 +284,11 @@
         <h2 id="drawer-title">实例详情</h2>
       </div>
       <div class="drawer-actions">
-        <button id="drawer-start" class="btn btn-sm">▶ 启动</button>
-        <button id="drawer-stop" class="btn btn-sm">■ 停止</button>
-        <button id="drawer-restart" class="btn btn-sm">↻ 重启</button>
-        <button id="drawer-kill" class="btn btn-sm btn-danger" title="强制终止">✕ 强杀</button>
-        <button id="drawer-delete" class="btn btn-sm btn-danger" title="删除实例">🗑 删除</button>
+        <button id="drawer-start" class="btn btn-sm need-admin">▶ 启动</button>
+        <button id="drawer-stop" class="btn btn-sm need-admin">■ 停止</button>
+        <button id="drawer-restart" class="btn btn-sm need-admin">↻ 重启</button>
+        <button id="drawer-kill" class="btn btn-sm btn-danger need-admin" title="强制终止">✕ 强杀</button>
+        <button id="drawer-delete" class="btn btn-sm btn-danger need-admin" title="删除实例">🗑 删除</button>
         <button id="drawer-close" class="btn btn-sm btn-ghost">关闭</button>
       </div>
     </div>
@@ -109,7 +315,7 @@
         <pre id="log-output" class="log-output"></pre>
         <div class="log-chat">
           <input type="text" id="log-chat-input" class="input log-chat-input" placeholder="发消息到游戏聊天（回车发送）…" autocomplete="off">
-          <button id="log-chat-send" class="btn btn-primary">发送</button>
+          <button id="log-chat-send" class="btn btn-primary need-admin">发送</button>
         </div>
       </section>
 
@@ -173,15 +379,15 @@
         <details class="config-advanced">
           <summary>高级 · JSON 编辑（点击展开）</summary>
           <div class="config-toolbar">
-            <button id="config-reload" class="btn btn-sm">重新加载</button>
-            <button id="config-save-json" class="btn btn-sm btn-primary">保存 JSON</button>
+            <button id="config-reload" class="btn btn-sm need-admin">重新加载</button>
+            <button id="config-save-json" class="btn btn-sm btn-primary need-admin">保存 JSON</button>
             <span id="config-json-result" class="command-result"></span>
           </div>
           <textarea id="config-editor" class="config-editor" spellcheck="false"></textarea>
         </details>
 
         <div class="config-toolbar">
-          <button id="config-save" class="btn btn-primary">保存配置</button>
+          <button id="config-save" class="btn btn-primary need-admin">保存配置</button>
           <span id="config-result" class="command-result"></span>
         </div>
       </section>
@@ -195,19 +401,19 @@
           <button id="file-refresh" class="btn btn-sm">刷新</button>
         </div>
         <div class="files-toolbar">
-          <button id="file-new" class="btn btn-sm">＋ 新建文件</button>
-          <button id="file-mkdir" class="btn btn-sm">新建目录</button>
-          <button id="file-rename" class="btn btn-sm">重命名</button>
-          <button id="file-copy" class="btn btn-sm">复制</button>
-          <button id="file-paste" class="btn btn-sm">粘贴</button>
-          <button id="file-delete" class="btn btn-sm btn-danger">删除</button>
+          <button id="file-new" class="btn btn-sm need-admin">＋ 新建文件</button>
+          <button id="file-mkdir" class="btn btn-sm need-admin">新建目录</button>
+          <button id="file-rename" class="btn btn-sm need-admin">重命名</button>
+          <button id="file-copy" class="btn btn-sm need-admin">复制</button>
+          <button id="file-paste" class="btn btn-sm need-admin">粘贴</button>
+          <button id="file-delete" class="btn btn-sm btn-danger need-admin">删除</button>
           <span id="file-op-result" class="command-result"></span>
         </div>
         <div id="file-list" class="file-list"></div>
         <div id="file-editor-wrap" class="hidden">
           <div class="config-toolbar">
             <span id="file-editor-name" class="file-path"></span>
-            <button id="file-save" class="btn btn-sm btn-primary">保存文件</button>
+            <button id="file-save" class="btn btn-sm btn-primary need-admin">保存文件</button>
             <button id="file-close" class="btn btn-sm btn-ghost">关闭编辑</button>
             <span id="file-result" class="command-result"></span>
           </div>
@@ -219,11 +425,11 @@
       <section id="tab-inventory" class="tab-panel hidden">
         <div class="inv-top">
           <button id="inv-refresh" class="btn btn-primary">刷新背包</button>
-          <button id="inv-enable" class="btn btn-sm" title="修改 MinecraftClient.ini 开启 InventoryHandling（需重启实例）">开启 InventoryHandling</button>
-          <button id="inv-disable" class="btn btn-sm" title="修改 MinecraftClient.ini 关闭 InventoryHandling（需重启实例）">关闭 InventoryHandling</button>
-          <button id="inv-drop-one" class="btn btn-sm btn-danger">丢弃选中格</button>
-          <button id="inv-drop-all" class="btn btn-sm btn-danger">丢弃选中格全部</button>
-          <button id="inv-timestamp" class="btn btn-sm" title="修改 MinecraftClient.ini 开启消息时间戳（需重启实例）">开启消息时间戳</button>
+          <button id="inv-enable" class="btn btn-sm need-admin" title="修改 MinecraftClient.ini 开启 InventoryHandling（需重启实例）">开启 InventoryHandling</button>
+          <button id="inv-disable" class="btn btn-sm need-admin" title="修改 MinecraftClient.ini 关闭 InventoryHandling（需重启实例）">关闭 InventoryHandling</button>
+          <button id="inv-drop-one" class="btn btn-sm btn-danger need-admin">丢弃选中格</button>
+          <button id="inv-drop-all" class="btn btn-sm btn-danger need-admin">丢弃选中格全部</button>
+          <button id="inv-timestamp" class="btn btn-sm need-admin" title="修改 MinecraftClient.ini 开启消息时间戳（需重启实例）">开启消息时间戳</button>
           <span id="inv-status" class="command-result"></span>
         </div>
         <div class="inv-layout">
@@ -247,16 +453,16 @@
       <!-- 脚本 -->
       <section id="tab-scripts" class="tab-panel hidden">
         <div class="inv-top">
-          <button id="script-new" class="btn btn-primary">＋ 新建脚本</button>
-          <button id="script-refresh" class="btn btn-sm">刷新</button>
+          <button id="script-new" class="btn btn-primary need-admin">＋ 新建脚本</button>
+          <button id="script-refresh" class="btn btn-sm need-admin">刷新</button>
           <span id="script-status" class="command-result"></span>
         </div>
         <div id="script-list" class="file-list"></div>
         <div id="script-editor-wrap" class="hidden">
           <div class="config-toolbar">
             <span id="script-editor-name" class="file-path"></span>
-            <button id="script-save" class="btn btn-sm btn-primary">保存</button>
-            <button id="script-run" class="btn btn-sm">运行</button>
+            <button id="script-save" class="btn btn-sm btn-primary need-admin">保存</button>
+            <button id="script-run" class="btn btn-sm need-admin">运行</button>
             <button id="script-close" class="btn btn-sm btn-ghost">关闭</button>
             <span id="script-editor-result" class="command-result"></span>
           </div>
@@ -289,8 +495,8 @@
       <div class="modal-head">
         <h2 class="modal-title">内置 MCC 模板</h2>
         <div class="modal-actions">
-          <button id="template-init" class="btn btn-sm" title="从 daemon 容器实例目录拉取到面板模板">从实例初始化</button>
-          <button id="template-upload-btn" class="btn btn-sm btn-primary">上传文件</button>
+          <button id="template-init" class="btn btn-sm need-admin" title="从 daemon 容器实例目录拉取到面板模板">从实例初始化</button>
+          <button id="template-upload-btn" class="btn btn-sm btn-primary need-admin">上传文件</button>
           <input type="file" id="template-file-input" class="hidden">
           <button id="template-close" class="btn btn-ghost">关闭</button>
         </div>
@@ -332,7 +538,7 @@
         <div id="create-result" class="command-result"></div>
         <div class="modal-actions">
           <button type="submit" class="btn btn-primary">创建</button>
-          <button type="button" id="create-cancel" class="btn btn-ghost">取消</button>
+          <button type="button" id="create-cancel" class="btn btn-ghost need-admin">取消</button>
         </div>
       </form>
     </div>
@@ -352,19 +558,19 @@
         <button id="nodefile-refresh" class="btn btn-sm">刷新</button>
       </div>
       <div class="files-toolbar">
-        <button id="nodefile-new" class="btn btn-sm">＋ 新建文件</button>
-        <button id="nodefile-mkdir" class="btn btn-sm">新建目录</button>
-        <button id="nodefile-rename" class="btn btn-sm">重命名</button>
-        <button id="nodefile-copy" class="btn btn-sm">复制</button>
-        <button id="nodefile-paste" class="btn btn-sm">粘贴</button>
-        <button id="nodefile-delete" class="btn btn-sm btn-danger">删除</button>
+        <button id="nodefile-new" class="btn btn-sm need-admin">＋ 新建文件</button>
+        <button id="nodefile-mkdir" class="btn btn-sm need-admin">新建目录</button>
+        <button id="nodefile-rename" class="btn btn-sm need-admin">重命名</button>
+        <button id="nodefile-copy" class="btn btn-sm need-admin">复制</button>
+        <button id="nodefile-paste" class="btn btn-sm need-admin">粘贴</button>
+        <button id="nodefile-delete" class="btn btn-sm btn-danger need-admin">删除</button>
         <span id="nodefile-result" class="command-result"></span>
       </div>
       <div id="nodefile-list" class="file-list nodefile-list"></div>
       <div id="nodefile-editor-wrap" class="hidden">
         <div class="config-toolbar">
           <span id="nodefile-editor-name" class="file-path"></span>
-          <button id="nodefile-save" class="btn btn-sm btn-primary">保存</button>
+          <button id="nodefile-save" class="btn btn-sm btn-primary need-admin">保存</button>
           <button id="nodefile-close-editor" class="btn btn-sm btn-ghost">关闭编辑</button>
           <span id="nodefile-editor-result" class="command-result"></span>
         </div>
@@ -374,6 +580,7 @@
   </div>
 
   <script src="api.js"></script>
+  <script src="v3.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -3,6 +3,9 @@ panel.config.json
 panel.config.*.json
 config.local.json
 
+# v3 运行时数据（健康统计/定时任务/自动化配置/操作日志）
+data/
+
 # Node
 node_modules/
 

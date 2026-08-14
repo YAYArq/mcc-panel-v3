@@ -173,6 +173,12 @@
 
   const toastEl = $('#toast');
 
+  // ---- v3 增强视图 ----
+  const v3Toggle = $('#v3-toggle');
+  const v3Back = $('#v3-back');
+  const v3View = $('#v3-view');
+  const toolbarEl = document.querySelector('.toolbar');
+
   // ---- 主题切换（黑夜/白天）----
   const THEME_KEY = 'yayabot_theme';
   function applyTheme(theme) {
@@ -312,6 +318,14 @@
     brandTitle.textContent = config.title || 'YAYA MCC BOT';
     loginTitle.textContent = config.title || 'YAYA MCC BOT';
     document.title = config.title || 'YAYA MCC BOT';
+
+    // v3：同步当前用户与角色（只读用户隐藏写操作按钮）
+    try {
+      const st = await api.authStatus();
+      if (st.role && window.MccPanel && window.MccPanel.v3) {
+        window.MccPanel.v3.setUser(st.user, st.role);
+      }
+    } catch (e) { /* 忽略 */ }
 
     await loadDaemons();
     startPolling();
@@ -1845,6 +1859,39 @@
     const card = e.target.closest('.instance-card');
     if (card) card.style.transform = '';
   });
+
+  // ---- v3 视图切换（集成进主界面）----
+  function enterV3View() {
+    if (!v3View) return;
+    closeDrawer();
+    if (toolbarEl) toolbarEl.classList.add('hidden');
+    instanceGrid.classList.add('hidden');
+    emptyState.classList.add('hidden');
+    v3View.classList.remove('hidden');
+    v3Toggle.textContent = '🚀 v3 增强';
+    if (window.MccPanel && window.MccPanel.v3) window.MccPanel.v3.onShown();
+  }
+
+  function exitV3View() {
+    if (!v3View) return;
+    v3View.classList.add('hidden');
+    if (toolbarEl) toolbarEl.classList.remove('hidden');
+    instanceGrid.classList.remove('hidden');
+    // empty-state 的显隐由 loadInstances 管理
+  }
+
+  if (v3Toggle) {
+    v3Toggle.addEventListener('click', () => {
+      if (v3View.classList.contains('hidden')) enterV3View();
+      else exitV3View();
+    });
+  }
+  if (v3Back) {
+    v3Back.addEventListener('click', () => {
+      exitV3View();
+      loadInstances();
+    });
+  }
 
   // ---- 启动 ----
   init();

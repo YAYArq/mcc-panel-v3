@@ -1,7 +1,7 @@
 {
   "name": "yayabot",
-  "version": "1.0.0",
-  "description": "YAYAbot - 通过 MCSManager 控制 MCC(Minecraft Console Client) bot 实例的网页面板，零第三方依赖。",
+  "version": "3.0.0",
+  "description": "YAYAbot v3 - 通过 MCSManager 控制 MCC(Minecraft Console Client) bot 实例的网页面板，含健康监控/自动化/MCC魔改/权限分级，零第三方依赖。",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

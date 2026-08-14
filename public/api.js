@@ -166,6 +166,29 @@
     },
     async templateInit(source, container) {
       return request('POST', '/api/template/init', { source, container });
+    },
+
+    // ---- v3 增强 API（/api/v3/*）----
+    v3Get(path, query) {
+      const qs = new URLSearchParams();
+      for (const [k, v] of Object.entries(query || {})) {
+        if (v !== undefined && v !== null && v !== '') qs.set(k, String(v));
+      }
+      const suffix = qs.toString() ? '?' + qs.toString() : '';
+      return request('GET', '/api/v3/' + path + suffix);
+    },
+    v3Post(path, body) {
+      return request('POST', '/api/v3/' + path, body || {});
+    },
+    v3Put(path, body) {
+      return request('PUT', '/api/v3/' + path, body || {});
+    },
+    v3Delete(path, query) {
+      const qs = new URLSearchParams();
+      for (const [k, v] of Object.entries(query || {})) {
+        if (v !== undefined && v !== null && v !== '') qs.set(k, String(v));
+      }
+      return request('DELETE', '/api/v3/' + path + (qs.toString() ? '?' + qs.toString() : ''));
     }
   };
 
