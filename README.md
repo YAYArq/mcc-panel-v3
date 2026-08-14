@@ -1,11 +1,9 @@
 # MCC-panel-v3
-
 依旧写点史
-
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D16-brightgreen.svg)](package.json)
 
-一个通过 **MCSManager (MCSM)** 控制 **MCC (Minecraft Console Client)** bot 实例的网页面板，可部署在服务器上。UI 风格与交互设计参考并感谢 [APRme/MULTIBOT_PANEL](https://github.com/APRme/MULTIBOT_PANEL)，
+一个通过 **MCSManager (MCSM)** 控制 **MCC (Minecraft Console Client)** bot 实例的网页面板，可部署在服务器上。UI 风格与交互设计参考并感谢 [APRme/MULTIBOT_PANEL](https://github.com/APRme/MULTIBOT_PANEL)，UI 风格融合明日方舟 × 女神异闻录 3/4。
 
 **v3 增强版**：在 v2 全部功能之上，叠加了实例健康监控、自动化（定时任务/掉线自动重连/防 AFK/开机自启组）、MCC 客户端"魔改"（自定义聊天指令/多服务器切换/原生功能注入）、批量导入导出与克隆、操作日志筛选导出、权限分级与 IP 白名单。
 
@@ -13,7 +11,7 @@
 
 ## 功能
 
-### 基础功能
+### v2 基础功能（全部保留）
 
 - 实例列表与实时状态（运行中 / 启动中 / 停止中 / 已停止 / 忙碌），按 MCSM 远程节点(daemon)切换
 - 启动 / 停止 / 重启 / 强杀（单实例与批量操作）、名称搜索、多选批量控制
@@ -21,7 +19,7 @@
 - 节点文件管理器、内置 MCC 模板管理（上传/删除/从容器初始化）、操作日志审计
 - 深色/日间主题、UUID 头像、healthz
 
-### 增强功能
+### v3 增强功能（顶栏「🚀 增强」主页标签页进入，不单独开视图）
 
 1. **实例健康监控面板**：在线时长（当前/累计/最长）、重启次数、掉线次数、消息统计（今日/累计/近 30 天柱状图），列表显示实例名
 2. **自动化**：
@@ -41,8 +39,11 @@
 6. **操作日志筛选/导出**：按用户 / 操作 / 时间范围筛选，导出 CSV / JSON（日志已持久化到 `data/logs.jsonl`，保留 10000 条）；发送命令/实例操作记录显示实例名
 7. **正版头像**：实例卡片显示正版玩家皮肤头像（后端代理 Mojang API + 前端 canvas 裁脸，绕过浏览器 CSP 对外部头像源的拦截；离线账号显示占位）
 8. **背包游戏图标**：背包格子显示原版物品贴图（从 MC 客户端 jar 提取到 `public/assets/items/`，共 1600+ 物品；无图标的物品自动回退显示文字名）
-9. **用户注册**：顶栏「用户」入口（仅最早的 admin 用户可见）——`config.users[0]` 是初始管理员，只有它可以注册其他用户（admin/readonly 角色）；注册用户存 `data/users.json`（密码 sha256+盐 哈希），重启面板后依然有效
-10. **权限分级**：`config.users[].role` 支持 `admin` / `readonly`；只读用户仅可查看（前端隐藏写按钮 + 后端 403 双重拦截）
+9. **用户注册与权限**：顶栏「用户」入口（仅管理员可见，普通用户/只读不可见）——`config.users[0]` 是最早的 admin（仅它可注册新用户）；注册用户存 `data/users.json`（密码 sha256+盐 哈希），支持三种角色：
+   - **管理员 admin**：全部权限，可删除注册用户、为普通用户配置可用实例
+   - **普通用户 user**：可启停/重启/强杀/命令/日志/配置/文件/背包/脚本/魔改**被授权的实例**（实例列表与健康面板仅显示授权实例）；无删除实例/创建实例/定时任务/自启组/导入导出/操作日志等全局管理权限
+   - **只读 readonly**：仅查看
+10. **权限分级（后端双重拦截）**：`config.users[].role` = `admin` | `user` | `readonly`；readonly 对任何非 GET 请求 403；user 对全局管理接口与未授权实例 403（实例级接口逐请求校验 daemonId/uuid 授权）
 11. **IP 白名单**：`ipWhitelistEnabled` + `ipWhitelist`，非白名单 IP 一律 403（含静态资源与 healthz）；反向代理场景用 `trustProxy` 读取 X-Forwarded-For
 12. **手机端优化**：响应式布局与触控友好的设置开关；全站无 emoji 装饰、粒子特效已移除（性能）
 
@@ -93,6 +94,11 @@ INSTALL_DIR=/opt/mcc-panel \
 sudo -E bash install.sh
 ```
 
+> **v2 → v3 升级**：直接覆盖代码即可（`server.js`、`lib/`、`public/`、`package.json`、`README.md`）。
+> `panel.config.json`、`templates/`、`data/` 会被保留，升级无需重配；重启服务即生效：
+> ```bash
+> sudo systemctl restart mcc-panel
+> ```
 > 新版首次启动会自动创建 `data/` 目录并开始采集健康数据（默认 15 秒轮询一次）。
 
 ### 手动启动
@@ -178,8 +184,10 @@ node server.js /path/to/panel.config.json
 | 方法与路径 | 说明 | 权限 |
 | --- | --- | --- |
 | `GET /api/v3/me` | 当前用户与角色（含 isOwner：是否为最早 admin） | 登录即可 |
-| `GET /api/v3/users` | 用户列表（配置用户 + 注册用户，不含密码） | 登录即可 |
-| `POST /api/v3/users` | 注册新用户（仅最早 admin = `users[0]` 可调用；密码哈希存 data/users.json） | 最早 admin |
+| `GET /api/v3/users` | 用户列表（配置用户 + 注册用户，不含密码；仅 admin 可见） | admin |
+| `POST /api/v3/users` | 注册新用户（仅最早 admin = `users[0]` 可调用；角色 admin/user/readonly） | 最早 admin |
+| `PUT /api/v3/users` | 修改注册用户角色/授权实例清单（admin） | admin |
+| `DELETE /api/v3/users?id=x` | 删除注册用户（admin；初始用户在 panel.config.json 中不可删） | admin |
 | `GET /api/avatar/<游戏名>` | 正版玩家皮肤 PNG 代理（Mojang API，前端裁脸） | 登录即可 |
 | `GET /api/v3/overview` | 总览（实例数/统计/任务数） | 登录即可 |
 | `GET /api/v3/health` | 实例健康监控列表 | 登录即可 |

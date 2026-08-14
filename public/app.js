@@ -323,10 +323,15 @@
       const st = await api.authStatus();
       if (st.role && window.MccPanel && window.MccPanel.v3) {
         window.MccPanel.v3.setUser(st.user, st.role);
+        // 单页滚动布局：一次性加载所有面板章节数据
+        window.MccPanel.v3.onShown();
       }
       const me = await api.v3Get('me');
       const isOwner = !!(me && me.data && me.data.isOwner);
-      if (usersBtn) usersBtn.classList.toggle('hidden', !isOwner);
+      const isAdmin = !!(me && me.data && (me.data.role === 'admin'));
+      currentUserIsOwner = isOwner; // 注册用户仅最早 admin
+      // 用户管理界面：管理员可见，普通用户/只读不可见
+      if (usersBtn) usersBtn.classList.toggle('hidden', !isAdmin);
     } catch (e) { /* 忽略 */ }
 
     await loadDaemons();
@@ -455,6 +460,9 @@
       instanceGrid.appendChild(renderCard(inst));
     });
     listSummary.textContent = `共 ${instances.length} 个实例 · 运行中 ${running}`;
+    // Hero 统计
+    if (heroTotalEl) heroTotalEl.textContent = instances.length;
+    if (heroRunningEl) heroRunningEl.textContent = running;
     renderSelectedCount();
   }
 
@@ -464,7 +472,7 @@
     const card = document.createElement('div');
     const isNewCard = !renderedCards.has(inst.instanceUuid);
     renderedCards.add(inst.instanceUuid);
-    card.className = 'instance-card' + (isNewCard ? ' card-enter' : '') +
+    card.className = 'instance-card inst-row' + (isNewCard ? ' card-enter' : '') +
       (selected.has(inst.instanceUuid) ? ' selected' : '');
     card.dataset.uuid = inst.instanceUuid;
 
@@ -472,25 +480,26 @@
     const nickname = (inst.config && inst.config.nickname) || inst.instanceUuid;
     const startCommand = (inst.config && inst.config.startCommand) || '';
 
+    // 横向大行布局（作品集列表式）：头像 | 名字+状态+命令 | 统计 | 操作 | 勾选
     card.innerHTML = `
-      <div class="card-top">
-        <img class="card-avatar" alt="头像">
+      <img class="card-avatar" alt="头像">
+      <div class="inst-main">
         <div class="card-head">
           <span class="card-name">${escapeHtml(nickname)}</span>
           <span class="badge ${status.cls}"><span class="status-dot"></span>${status.label}</span>
         </div>
-        <input type="checkbox" class="card-check" ${selected.has(inst.instanceUuid) ? 'checked' : ''}>
+        <div class="card-cmd" title="${escapeHtml(startCommand)}">${escapeHtml(truncate(startCommand, 64))}</div>
       </div>
       <div class="card-meta">
         <span>启动 <b>${Number(inst.started) || 0}</b></span>
         <span>自动重启 <b>${Number(inst.autoRestarted) || 0}</b></span>
       </div>
-      <div class="card-cmd" title="${escapeHtml(startCommand)}">${escapeHtml(truncate(startCommand, 44))}</div>
       <div class="card-actions">
         <button class="btn btn-sm act-start" data-action="open">启动</button>
         <button class="btn btn-sm act-stop" data-action="stop">停止</button>
         <button class="btn btn-sm act-restart" data-action="restart">重启</button>
       </div>
+      <input type="checkbox" class="card-check" ${selected.has(inst.instanceUuid) ? 'checked' : ''}>
     `;
 
     loadAvatar(inst.instanceUuid, card.querySelector('.card-avatar'));
@@ -1855,13 +1864,21 @@
   oplogClose.addEventListener('click', () => closeModal(oplogOverlay));
   oplogOverlay.addEventListener('click', (e) => { if (e.target === oplogOverlay) closeModal(oplogOverlay); });
 
-  // ---- 用户管理（仅最早的 admin 用户可注册其他用户）----
+  // ---- 用户管理（管理员可见；注册仅最早 admin；删除/授权实例管理员可操作）----
   const usersOverlay = $('#users-overlay');
   const usersBtn = $('#users-btn');
   const usersList = $('#users-list');
   const usersRegisterForm = $('#users-register-form');
   const usersClose = $('#users-close');
   const usersResult = $('#users-result');
+  const grantOverlay = $('#grant-overlay');
+  const grantList = $('#grant-list');
+  const grantResult = $('#grant-result');
+  let currentUserIsOwner = false;
+  let usersCache = []; // 最近一次用户列表（授权配置用）
+  let grantTargetUser = null;
+
+  const ROLE_NAMES = { admin: '管理员', user: '普通用户', readonly: '只读' };
 
   async function loadUsers() {
     if (!usersList) return;
@@ -1869,17 +1886,61 @@
     try {
       const r = await api.v3Get('users');
       const d = r.data || {};
-      const list = d.users || [];
-      usersList.innerHTML = list.length === 0
+      currentUserIsOwner = !!d.owner;
+      usersCache = d.users || [];
+      // 注册表单仅最早 admin 可见
+      if (usersRegisterForm) usersRegisterForm.classList.toggle('hidden', !currentUserIsOwner);
+      usersList.innerHTML = usersCache.length === 0
         ? '<div class="panel-hint">暂无用户</div>'
-        : list.map((u) => `
+        : usersCache.map((u) => `
           <div class="oplog-item">
             <span class="oplog-user">${escapeHtml(u.username)}</span>
-            <span class="oplog-action">${u.role === 'admin' ? '管理员' : '只读'}</span>
-            <span class="oplog-detail">${u.source === 'config' ? '初始用户' : '注册用户'}</span>
+            <span class="oplog-action">${ROLE_NAMES[u.role] || u.role}</span>
+            <span class="oplog-detail">${u.source === 'config' ? '初始用户' : (u.role === 'user' ? '授权实例 ' + (u.instances || []).length + ' 个' : '注册用户')}</span>
+            <span class="oplog-actions">
+              ${u.role === 'user' ? `<button class="btn btn-sm need-admin user-grant" data-user="${escapeHtml(u.username)}">配置实例</button>` : ''}
+              ${u.source === 'registered' ? `<button class="btn btn-sm btn-danger need-admin user-del" data-user="${escapeHtml(u.username)}">删除</button>` : ''}
+            </span>
           </div>`).join('');
     } catch (e) {
       usersList.innerHTML = '<div class="panel-hint">加载失败: ' + escapeHtml(e.message) + '</div>';
+    }
+  }
+
+  // 授权模态：列出全部节点实例并勾选
+  async function openGrantModal(username) {
+    grantTargetUser = username;
+    if ($('#grant-user-name')) $('#grant-user-name').textContent = username;
+    if (grantOverlay) grantOverlay.classList.remove('hidden');
+    if (grantResult) grantResult.textContent = '';
+    if (!grantList) return;
+    grantList.innerHTML = '<div class="panel-hint">加载实例列表…</div>';
+    try {
+      const granted = new Set(((usersCache.find((u) => u.username === username) || {}).instances || []).map((i) => i.daemonId + '::' + i.uuid));
+      const daemons = await api.daemons();
+      const all = [];
+      for (const d of (daemons.data || [])) {
+        try {
+          const r = await api.instances({ daemonId: d.uuid, page: 1, page_size: 100 });
+          for (const inst of ((r.data && r.data.data) || [])) {
+            all.push({
+              daemonId: d.uuid,
+              uuid: inst.instanceUuid,
+              name: (inst.config && inst.config.nickname) || inst.instanceUuid,
+              key: d.uuid + '::' + inst.instanceUuid
+            });
+          }
+        } catch (e) { /* 节点不可用跳过 */ }
+      }
+      grantList.innerHTML = all.length === 0
+        ? '<div class="panel-hint">无实例</div>'
+        : all.map((i) => `
+          <label class="file-row grant-row">
+            <input type="checkbox" class="grant-check" data-key="${escapeHtml(i.key)}" data-daemon="${escapeHtml(i.daemonId)}" data-uuid="${escapeHtml(i.uuid)}" ${granted.has(i.key) ? 'checked' : ''}>
+            <span class="file-name">${escapeHtml(i.name)}</span>
+          </label>`).join('');
+    } catch (e) {
+      grantList.innerHTML = '<div class="panel-hint">加载失败: ' + escapeHtml(e.message) + '</div>';
     }
   }
 
@@ -1892,6 +1953,50 @@
   }
   if (usersClose) usersClose.addEventListener('click', () => closeModal(usersOverlay));
   if (usersOverlay) usersOverlay.addEventListener('click', (e) => { if (e.target === usersOverlay) closeModal(usersOverlay); });
+
+  // 用户列表操作（删除/配置实例）
+  if (usersList) {
+    usersList.addEventListener('click', async (e) => {
+      const delBtn = e.target.closest('.user-del');
+      const grantBtn = e.target.closest('.user-grant');
+      if (grantBtn) { openGrantModal(grantBtn.dataset.user); return; }
+      if (!delBtn) return;
+      const username = delBtn.dataset.user;
+      if (!confirm('确定删除用户「' + username + '」？')) return;
+      try {
+        await api.v3Delete('users', { id: username });
+        toast('已删除用户 ' + username);
+        loadUsers();
+      } catch (err) {
+        toast(err.message, 'err');
+      }
+    });
+  }
+
+  // 授权模态事件
+  if ($('#grant-close')) $('#grant-close').addEventListener('click', () => closeModal(grantOverlay));
+  if (grantOverlay) grantOverlay.addEventListener('click', (e) => { if (e.target === grantOverlay) closeModal(grantOverlay); });
+  if ($('#grant-save')) {
+    $('#grant-save').addEventListener('click', async () => {
+      if (!grantTargetUser) return;
+      const instances = [];
+      if (grantList) {
+        grantList.querySelectorAll('.grant-check:checked').forEach((cb) => {
+          instances.push({ daemonId: cb.dataset.daemon, uuid: cb.dataset.uuid });
+        });
+      }
+      if (grantResult) { grantResult.textContent = '保存中…'; grantResult.className = 'command-result'; }
+      try {
+        const r = await api.v3Put('users', { username: grantTargetUser, instances });
+        if (grantResult) { grantResult.textContent = '已保存（' + (r.data.instances || []).length + ' 个实例）'; grantResult.className = 'command-result ok'; }
+        toast('实例授权已更新');
+        closeModal(grantOverlay);
+        loadUsers();
+      } catch (err) {
+        if (grantResult) { grantResult.textContent = err.message; grantResult.className = 'command-result err'; }
+      }
+    });
+  }
 
   if (usersRegisterForm) {
     usersRegisterForm.addEventListener('submit', async (e) => {
@@ -1909,7 +2014,7 @@
       usersResult.className = 'command-result';
       try {
         const r = await api.v3Post('users', { username, password, role });
-        usersResult.textContent = '已注册用户 ' + r.data.username + '（' + (r.data.role === 'admin' ? '管理员' : '只读') + '）';
+        usersResult.textContent = '已注册用户 ' + r.data.username + '（' + (ROLE_NAMES[r.data.role] || r.data.role) + '）';
         usersResult.className = 'command-result ok';
         usersRegisterForm.reset();
         loadUsers();
@@ -2085,44 +2190,43 @@
   });
 
   // ---- 樱花/粒子/点击特效已移除（性能优化：持续创建销毁 DOM 导致页面卡顿）----
+  // ---- 3D 倾斜卡片已移除：其内联 transform 会覆盖 CSS 的 hover 放大动效，
+  //      放大/缩小动效完全由 CSS 的 scale 过渡实现（见 app.css .instance-card:hover）----
 
-  // ---- 3D 倾斜卡片 ----
-  instanceGrid.addEventListener('mousemove', (e) => {
-    const card = e.target.closest('.instance-card');
-    if (!card) return;
-    const rect = card.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width - 0.5;
-    const y = (e.clientY - rect.top) / rect.height - 0.5;
-    card.style.transform = `rotateY(${(x * 10).toFixed(2)}deg) rotateX(${(-y * 10).toFixed(2)}deg) translateY(-4px)`;
+  // ---- 侧栏章节导航（单页滚动布局：00 Hero / 01 实例 / 02 数据 / 03 自动化 / 04 导入导出 / 05 操作日志）----
+  const heroTotalEl = $('#hero-total');
+  const heroRunningEl = $('#hero-running');
+
+  // 点击侧栏导航 -> 平滑滚动到对应章节
+  document.querySelectorAll('.main-tab[data-target]').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const target = document.querySelector(tab.dataset.target);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        document.querySelectorAll('.main-tab[data-target]').forEach((t) => t.classList.remove('active'));
+        tab.classList.add('active');
+      }
+    });
   });
-  instanceGrid.addEventListener('mouseleave', (e) => {
-    const card = e.target.closest('.instance-card');
-    if (card) card.style.transform = '';
-  });
 
-  // ---- 主页标签页切换（实例 / 增强），v3 功能集成在主页内，不再单独开视图 ----
-  const mainTabInstances = $('#main-tab-instances');
-  const mainTabV3 = $('#main-tab-v3');
-
-  function showMainTab(name) {
-    const isV3 = name === 'v3';
-    if (isV3 && !v3View) return;
-    if (isV3) closeDrawer();
-    if (toolbarEl) toolbarEl.classList.toggle('hidden', isV3);
-    instanceGrid.classList.toggle('hidden', isV3);
-    emptyState.classList.toggle('hidden', isV3 || instances.length > 0);
-    v3View.classList.toggle('hidden', !isV3);
-    if (mainTabInstances) mainTabInstances.classList.toggle('active', !isV3);
-    if (mainTabV3) mainTabV3.classList.toggle('active', isV3);
-    if (isV3) {
-      if (window.MccPanel && window.MccPanel.v3) window.MccPanel.v3.onShown();
-    } else {
-      loadInstances(); // 返回实例页时刷新列表（empty-state 显隐由 loadInstances 管理）
-    }
-  }
-
-  if (mainTabInstances) mainTabInstances.addEventListener('click', () => showMainTab('instances'));
-  if (mainTabV3) mainTabV3.addEventListener('click', () => showMainTab('v3'));
+  // 章节进入视口时同步侧栏高亮（滚动监听，节流）
+  (function bindSectionSpy() {
+    const sections = Array.from(document.querySelectorAll('.sec[id]'));
+    if (!sections.length || !('IntersectionObserver' in window)) return;
+    const tabs = Array.from(document.querySelectorAll('.main-tab[data-target]'));
+    const io = new IntersectionObserver((entries) => {
+      for (const en of entries) {
+        if (en.isIntersecting) {
+          const t = tabs.find((x) => x.dataset.target === '#' + en.target.id);
+          if (t) {
+            tabs.forEach((x) => x.classList.remove('active'));
+            t.classList.add('active');
+          }
+        }
+      }
+    }, { rootMargin: '-40% 0px -55% 0px' });
+    sections.forEach((s) => io.observe(s));
+  })();
 
   // ---- 启动 ----
   init();

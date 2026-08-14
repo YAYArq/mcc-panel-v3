@@ -30,7 +30,7 @@ lib/automation.js    # AutomationEngine：定时任务(cron)、掉线检测(reco
 lib/avatar.js        # 正版头像服务：Mojang 用户名->UUID->皮肤URL->PNG 代理（两级缓存+失败冷却）
 lib/mcc-mod.js       # MCC 魔改纯函数：matches.ini/servers.txt 生成解析、INI 段注入、脚本模板、可视化设置(parseSettings/applySettings)
 lib/v3-routes.js     # 全部 /api/v3/* 路由（handleV3Route(ctx)，未匹配返回 null）
-public/index.html    # 页面结构（含 v3 面板：总览/自动化/MCC魔改/导入导出/操作日志 5 tab）
+public/index.html    # 页面结构（左侧竖排导航 sidebar + Hero 大标题区 + 主区 main-area + 拼贴实例网格 + v3 面板 + 抽屉/模态）
 public/app.js        # v2 交互 + v3 视图切换(enterV3View/exitV3View) + 角色同步(need-admin 隐藏)
 public/api.js        # 前端 API 封装（含 v3Get/v3Post/v3Put/v3Delete）
 public/v3.css        # v3 面板样式（复用主题变量）
@@ -63,14 +63,14 @@ data/                # 运行时数据（gitignore）：health.json / schedules.
 - **原生功能一键注入**：`/api/v3/mcc/apply-mod`（AntiAFK / AutoRelog / ScriptScheduler 段注入到 MinecraftClient.ini，需重启实例生效）。
 - **挂机脚本模板**：`/api/v3/mcc/templates` + `/api/v3/mcc/scripts`（生成 idle.txt / tasks.txt 到实例目录）。
 
-### 前端交互要点（v3 集成主页）
-- 顶栏 `main-tab-instances` / `main-tab-v3` 两个主页标签页（app.js showMainTab），v3 增强不再单独开视图；实例名显示依赖后端 snapshot 的 nickname（automation.js 取 `inst.config.nickname`）。
+### 前端交互要点（单页滚动章节布局）
+- **布局结构（作品集式单页滚动）**：`<aside class="sidebar">` 左侧窄图标栏（76px hover 展开，编号锚点 01-05）+ `<div class="main-area">` 单页滚动容器，内容为编号章节：`#sec-hero`（全屏 Hero，YAYA/BOT PANEL 超大 mono 标题 clamp(56px,9vw,118px) + SCROLL 提示）、`#sec-instances`（01 实例：横向大行列表 inst-row + 批量 toolbar）、`#sec-overview`（02 数据）、`#sec-automation`（03 自动化）、`#sec-transfer`（04 导入导出）、`#sec-oplog`（05 操作日志，v3-view 包裹 02-05）。**不再有实例/增强 tab 切换**：侧栏按钮为锚点滚动（app.js scrollIntoView + IntersectionObserver 章节高亮），v3 面板全部同时可见（enterApp 时 v3.onShown 全量加载所有面板数据）。实例渲染为 inst-row 横向行（app.js renderCard，保留 instance-card 类与全部内部类）。
 - **MCC 魔改已移入实例抽屉「魔改」tab**（index.html #tab-mod），v3.js 用 `modTarget()` 取目标实例（app.js 打开抽屉时调 `MccPanel.v3.setDrawerInstance`，切 tab 调 `loadDrawerMod`）；增强页不再有魔改 tab。
 - 日志抽屉有 `log-filter`（全部/聊天/系统）chips。分类规则（app.js isChatLine，按生产真实格式）：`▌『频道』玩家 > 消息` / `<玩家> 消息` / 含中文行 = 聊天（游戏内消息）；`[MCC]` 开头、ASCII 画框、纯英文行 = 系统（MCC 命令提示与反馈）。
 - 配置 tab 含 settings-groups 可视化面板（分组可折叠）+ 原表单 + JSON 编辑（功能并存）。
 - **正版头像**：GET /api/avatar/<name>（lib/avatar.js 代理 Mojang），前端 fetchSkinFace 用 canvas 裁 40x40（脸部 (8,8)8x8 + 帽子层 (40,8)），localStorage 缓存 30 天；离线账号 fallback 占位。
 - **背包图标**：assets/items/<物品id>.png（生产从 MC jar 提取 1600+ 贴图，本地 gitignore），前端 img 404 时隐藏露出文字名（app.js makeInvSlot）。
-- **用户注册**：GET/POST /api/v3/users；「最早 admin」= config.users[0]（单口令模式=任何登录者），仅 owner 可注册；注册用户存 data/users.json（密码 sha256+盐），登录校验在 server.js verifyLogin 合并两源。/api/v3/me 返回 isOwner 控制前端「用户」按钮显隐。
+- **用户注册与权限分级**：GET/POST/PUT/DELETE /api/v3/users；「最早 admin」= config.users[0]（单口令模式=任何登录者），仅 owner 可注册；注册用户存 data/users.json（密码 sha256+盐），登录校验在 server.js verifyLogin 合并两源。角色三档：admin / user（普通用户）/ readonly。**user 角色实例级授权**：server.js 拦截层对 user 的实例级接口（/api/instance*、/api/files*、/api/v3/mcc/*）逐请求校验 body/query 的 daemonId+uuid 是否在授权清单（userCanAccessInstance）；全局管理接口（users/schedules/automation/autostart-groups/import/export/operation-logs/template/instance create-delete/clone）对 user 一律 403；GET /api/instances 与 /api/v3/health、/api/v3/overview 按授权过滤（v3-routes userAccessSet）。前端：v3.js setUser 给 body 挂 role-user class，v3.css 据此隐藏工具栏/操作日志/增强页管理tab/删除按钮；用户界面仅 admin 可见（注册表单仅 owner），授权配置走 grant 模态（勾选实例 → PUT users）。注意 issueSession 必须保留三档角色（曾归一成 admin 导致 user 权限失效）。
 - **全站无 emoji**（用户要求去除），操作日志「发送命令/实例操作」后端附实例名（server.js getInstanceName + instanceNameCache，缓存 10 分钟）。
 
 ## API 约定

@@ -24,70 +24,93 @@
     </form>
   </div>
 
-  <!-- 主界面 -->
+  <!-- 主界面：左侧竖排导航 + Hero 大标题区 + 内容网格（编辑式布局） -->
   <div id="app" class="app hidden">
-    <header class="topbar">
-      <div class="topbar-left">
+    <aside class="sidebar">
+      <div class="sidebar-logo">
         <span class="brand"><span id="brand-title">YAYA MCC BOT</span></span>
-        <nav class="main-tabs" id="main-tabs">
-          <button id="main-tab-instances" class="main-tab active" title="实例列表">实例</button>
-          <button id="main-tab-v3" class="main-tab" title="健康监控/自动化/MCC魔改/导入导出/操作日志">增强</button>
-        </nav>
+        <span class="sidebar-sub">MCC BOT PANEL</span>
+      </div>
+      <nav class="main-tabs" id="main-tabs">
+        <button id="main-tab-instances" class="main-tab active" data-target="#sec-instances" title="01 实例"><span class="nav-ico">01</span><span class="nav-label">实例</span></button>
+        <button id="main-tab-v3" class="main-tab" data-target="#sec-overview" title="02 数据"><span class="nav-ico">02</span><span class="nav-label">数据</span></button>
+        <button class="main-tab" data-target="#sec-automation" title="03 自动化"><span class="nav-ico">03</span><span class="nav-label">自动化</span></button>
+        <button class="main-tab" data-target="#sec-transfer" title="04 导入导出"><span class="nav-ico">04</span><span class="nav-label">导入导出</span></button>
+        <button class="main-tab" data-target="#sec-oplog" title="05 操作日志"><span class="nav-ico">05</span><span class="nav-label">操作日志</span></button>
+      </nav>
+      <div class="sidebar-status">
         <span id="conn-status" class="conn-status"></span>
-      </div>
-      <div class="topbar-right">
-        <label class="field-label">节点</label>
-        <select id="daemon-select" class="select" title="MCSM 远程节点"></select>
         <span id="perf-status" class="perf-status" title="节点 CPU / 内存占用">--</span>
-        <input type="search" id="search-input" class="input search-input" placeholder="按名称搜索…">
-        <button id="refresh-btn" class="btn" title="刷新">刷新</button>
-        <button id="users-btn" class="btn btn-ghost hidden" title="用户管理（仅最早的管理员可注册新用户）">用户</button>
-        <button id="oplog-btn" class="btn btn-ghost" title="查看操作日志">操作日志</button>
-        <button id="theme-toggle" class="btn btn-ghost" title="切换黑夜/白天模式">主题</button>
-        <button id="logout-btn" class="btn btn-ghost" title="退出登录">退出</button>
       </div>
-    </header>
-
-    <div class="toolbar">
-      <label class="check-all">
-        <input type="checkbox" id="select-all">
-        <span>全选</span>
-      </label>
-      <span id="selected-count" class="selected-count">未选择</span>
-      <div class="toolbar-actions">
-        <button id="batch-start" class="btn btn-sm need-admin" title="批量启动">▶ 启动</button>
-        <button id="batch-stop" class="btn btn-sm need-admin" title="批量停止">■ 停止</button>
-        <button id="batch-restart" class="btn btn-sm need-admin" title="批量重启">重启</button>
-        <button id="batch-delete" class="btn btn-sm btn-danger need-admin" title="批量删除选中实例">删除</button>
-        <button id="node-file-btn" class="btn btn-sm need-admin" title="管理节点文件系统">节点文件</button>
-        <button id="template-btn" class="btn btn-sm need-admin" title="内置 MCC 模板管理">模板</button>
-        <button id="create-instance-btn" class="btn btn-sm btn-primary need-admin" title="创建新的 MCC 实例">＋ 创建实例</button>
+      <div class="sidebar-actions">
+        <button id="users-btn" class="btn btn-ghost hidden" title="用户管理（仅最早的管理员可注册新用户）"><span class="nav-ico">户</span><span class="nav-label">用户</span></button>
+        <button id="oplog-btn" class="btn btn-ghost" title="查看操作日志"><span class="nav-ico">志</span><span class="nav-label">操作日志</span></button>
+        <button id="theme-toggle" class="btn btn-ghost" title="切换黑夜/白天模式"><span class="nav-ico">题</span><span class="nav-label">主题</span></button>
+        <button id="logout-btn" class="btn btn-ghost" title="退出登录"><span class="nav-ico">退</span><span class="nav-label">退出</span></button>
       </div>
-      <span id="list-summary" class="list-summary"></span>
-    </div>
+    </aside>
 
-    <main class="content">
-      <div id="instance-grid" class="instance-grid"></div>
-      <div id="empty-state" class="empty-state hidden">
-        <div class="empty-icon"></div>
-        <p id="empty-text">暂无实例</p>
-      </div>
-
-      <!-- ===================== v3 增强面板（主页「增强」标签页） ===================== -->
-      <div id="v3-view" class="v3-view hidden">
-        <div class="v3-header">
-          <h2 class="v3-title">增强功能</h2>
-          <span id="v3-user" class="v3-user"></span>
+    <div class="main-area">
+      <!-- ============ 00 全屏 Hero ============ -->
+      <section class="sec sec-hero" id="sec-hero">
+        <div class="hero">
+          <h1 class="hero-title">YAYA<br>BOT PANEL</h1>
+          <p class="hero-sub" id="hero-sub">MCC 机器人控制台</p>
+          <div class="hero-stats">
+            <div class="hero-stat"><b id="hero-total">-</b><span>实例总数</span></div>
+            <div class="hero-stat"><b id="hero-running">-</b><span>运行中</span></div>
+          </div>
+          <div class="hero-controls">
+            <select id="daemon-select" class="select" title="MCSM 远程节点"></select>
+            <input type="search" id="search-input" class="input search-input" placeholder="按名称搜索…">
+            <button id="refresh-btn" class="btn" title="刷新">刷新</button>
+          </div>
+          <div class="hero-scroll">SCROLL</div>
         </div>
-        <nav class="v3-tabs">
-          <button class="v3-tab active" data-v3tab="overview">总览</button>
-          <button class="v3-tab" data-v3tab="automation">自动化</button>
-          <button class="v3-tab" data-v3tab="transfer">导入导出</button>
-          <button class="v3-tab" data-v3tab="oplog">操作日志</button>
-        </nav>
+      </section>
 
-        <!-- 总览 -->
-        <section id="v3-overview" class="v3-panel">
+      <!-- ============ 01 实例 ============ -->
+      <section class="sec" id="sec-instances">
+        <header class="sec-head">
+          <span class="sec-no">01</span>
+          <h2 class="sec-title">实例</h2>
+          <span id="list-summary" class="list-summary"></span>
+        </header>
+
+        <div class="toolbar">
+          <label class="check-all">
+            <input type="checkbox" id="select-all">
+            <span>全选</span>
+          </label>
+          <span id="selected-count" class="selected-count">未选择</span>
+          <div class="toolbar-actions">
+            <button id="batch-start" class="btn btn-sm need-admin" title="批量启动">启动</button>
+            <button id="batch-stop" class="btn btn-sm need-admin" title="批量停止">停止</button>
+            <button id="batch-restart" class="btn btn-sm need-admin" title="批量重启">重启</button>
+            <button id="batch-delete" class="btn btn-sm btn-danger need-admin" title="批量删除选中实例">删除</button>
+            <button id="node-file-btn" class="btn btn-sm need-admin" title="管理节点文件系统">节点文件</button>
+            <button id="template-btn" class="btn btn-sm need-admin" title="内置 MCC 模板管理">模板</button>
+            <button id="create-instance-btn" class="btn btn-sm btn-primary need-admin" title="创建新的 MCC 实例">＋ 创建实例</button>
+          </div>
+        </div>
+
+        <div id="instance-grid" class="instance-grid"></div>
+        <div id="empty-state" class="empty-state hidden">
+          <div class="empty-icon">00</div>
+          <p id="empty-text">暂无实例</p>
+        </div>
+      </section>
+
+      <!-- ============ 02-05 面板章节（单页滚动，不再 tab 切换） ============ -->
+      <div id="v3-view" class="v3-view">
+        <!-- 02 数据 -->
+        <section class="sec" id="sec-overview">
+          <header class="sec-head">
+            <span class="sec-no">02</span>
+            <h2 class="sec-title">数据</h2>
+            <span id="v3-user" class="v3-user"></span>
+          </header>
+          <section id="v3-overview" class="v3-panel">
           <div class="v3-cards">
             <div class="v3-card"><div class="v3-card-num" id="v3o-total">-</div><div class="v3-card-label">实例总数</div></div>
             <div class="v3-card"><div class="v3-card-num" id="v3o-running">-</div><div class="v3-card-label">运行中</div></div>
@@ -104,9 +127,15 @@
           <div class="v3-section-title">消息统计（近 30 天）</div>
           <div id="v3-stats-bars" class="v3-bars"></div>
         </section>
+        </section>
 
-        <!-- 自动化 -->
-        <section id="v3-automation" class="v3-panel hidden">
+        <!-- 03 自动化 -->
+        <section class="sec" id="sec-automation">
+          <header class="sec-head">
+            <span class="sec-no">03</span>
+            <h2 class="sec-title">自动化</h2>
+          </header>
+          <section id="v3-automation" class="v3-panel">
           <div class="v3-section-title">定时任务（cron 风格）<button id="v3-sched-new" class="btn btn-sm btn-primary need-admin">＋ 新建任务</button></div>
           <div class="v3-table-wrap">
             <table class="v3-table" id="v3-sched-table">
@@ -157,12 +186,16 @@
               <tbody></tbody>
             </table>
           </div>
+          </section>
         </section>
 
-        <!-- MCC 魔改已移入实例抽屉「魔改」tab（针对当前实例直接操作） -->
-
-        <!-- 导入导出 -->
-        <section id="v3-transfer" class="v3-panel hidden">
+        <!-- 04 导入导出 -->
+        <section class="sec" id="sec-transfer">
+          <header class="sec-head">
+            <span class="sec-no">04</span>
+            <h2 class="sec-title">导入导出</h2>
+          </header>
+          <section id="v3-transfer" class="v3-panel">
           <div class="v3-section-title">实例配置批量导出（JSON）</div>
           <div class="v3-btn-row">
             <button id="v3-export" class="btn btn-primary">导出全部实例</button>
@@ -187,10 +220,16 @@
             <button id="v3-clone" class="btn btn-primary need-admin">克隆实例</button>
             <span id="v3-clone-result" class="command-result"></span>
           </div>
+          </section>
         </section>
 
-        <!-- 操作日志 -->
-        <section id="v3-oplog" class="v3-panel hidden">
+        <!-- 05 操作日志 -->
+        <section class="sec" id="sec-oplog">
+          <header class="sec-head">
+            <span class="sec-no">05</span>
+            <h2 class="sec-title">操作日志</h2>
+          </header>
+          <section id="v3-oplog" class="v3-panel">
           <div class="v3-filter-row">
             <input type="text" id="v3-ol-user" class="input" placeholder="按用户筛选">
             <input type="text" id="v3-ol-action" class="input" placeholder="按操作筛选">
@@ -207,8 +246,9 @@
             </table>
           </div>
         </section>
+        </section>
       </div>
-    </main>
+    </div>
   </div>
 
   <!-- 详情抽屉 -->
@@ -535,6 +575,7 @@
           </label>
           <label class="form-label">角色
             <select id="users-new-role" class="select">
+              <option value="user">普通用户（可操作被授权的实例）</option>
               <option value="readonly">只读（仅查看）</option>
               <option value="admin">管理员（全部权限）</option>
             </select>
@@ -545,6 +586,24 @@
           <span id="users-result" class="command-result"></span>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- 实例授权模态框（管理员为普通用户配置可用实例） -->
+  <div id="grant-overlay" class="modal-overlay hidden">
+    <div class="modal modal-wide">
+      <div class="modal-head">
+        <h2 class="modal-title">配置可用实例 - <span id="grant-user-name"></span></h2>
+        <div class="modal-actions">
+          <button id="grant-close" class="btn btn-ghost">关闭</button>
+        </div>
+      </div>
+      <p class="panel-hint">勾选该普通用户可操作的实例（可启停/重启/命令/配置/文件/背包/脚本/魔改；无删除与全局管理权限）</p>
+      <div id="grant-list" class="file-list"></div>
+      <div class="modal-actions">
+        <button id="grant-save" class="btn btn-primary">保存授权</button>
+        <span id="grant-result" class="command-result"></span>
+      </div>
     </div>
   </div>
 

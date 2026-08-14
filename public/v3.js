@@ -66,10 +66,13 @@
   function setUser(user, role) {
     currentUser = user || '';
     currentRole = role || 'admin';
+    // 角色 class：readonly 隐藏写按钮（need-admin），user 隐藏全局管理功能（need-global 由 CSS 控制）
     document.body.classList.toggle('readonly', currentRole === 'readonly');
+    document.body.classList.toggle('role-user', currentRole === 'user');
     const el = $('#v3-user');
     if (el) {
-      el.innerHTML = escapeHtml(currentUser) + `<span class="v3-role ${currentRole === 'readonly' ? 'readonly' : ''}">${currentRole === 'readonly' ? '只读' : '管理员'}</span>`;
+      const roleText = currentRole === 'readonly' ? '只读' : (currentRole === 'user' ? '普通用户' : '管理员');
+      el.innerHTML = escapeHtml(currentUser) + `<span class="v3-role ${currentRole === 'readonly' ? 'readonly' : ''}">${roleText}</span>`;
     }
   }
 
@@ -152,9 +155,15 @@
 
   // ---------------------------------------------------------------------------
   // 视图生命周期（app.js 调用）
+  // 单页滚动布局：所有面板章节同时可见，进入时一次性加载全部数据
   // ---------------------------------------------------------------------------
   V3.onShown = function () {
     loadOverview();
+    loadSchedules();
+    loadAutomationConfig();
+    loadGroups();
+    loadTransferTab();
+    loadOpLogs();
   };
 
   V3.setUser = setUser;
