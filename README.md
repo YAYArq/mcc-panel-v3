@@ -222,7 +222,7 @@ node server.js /path/to/panel.config.json
 
 ## 致谢
 
-- **[APRme/MULTIBOT_PANEL](https://github.com/APRme/MULTIBOT_PANEL)** — 感谢其提供灵感。后续的**头像获取**（玩家头像）与**材质获取**（皮肤材质）功能参考该项目的实现思路。
+- **[APRme/MULTIBOT_PANEL](https://github.com/APRme/MULTIBOT_PANEL)** — 感谢其提供灵感。后续的**头像获取**与**材质获取**功能参考该项目的实现思路。
 - **[MCSManager](https://github.com/MCSManager/MCSManager)**（Apache-2.0）— 提供节点/实例管理 API，本面板经其 daemon 控制 MCC 实例。
 - **[Minecraft Console Client](https://github.com/MCCTeam/Minecraft-Console-Client)**（CDDL-1.0）— 被本面板控制与配置的机器人客户端。
 
