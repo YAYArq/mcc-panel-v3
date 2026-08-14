@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>YAYA MCC BOT</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&family=Space+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <!-- 登录遮罩 -->
+  <div id="login-overlay" class="login-overlay hidden">
+    <form id="login-form" class="login-card" autocomplete="off">
+      <div class="login-logo">🐾</div>
+      <h1 id="login-title">YAYA MCC BOT</h1>
+      <p class="login-sub">BOT CONTROL SYSTEM</p>
+      <input type="text" id="login-user" class="login-input" placeholder="账号" autocomplete="username" autofocus>
+      <input type="password" id="login-pass" class="login-input" placeholder="密码" autocomplete="current-password">
+      <div id="login-error" class="login-error hidden"></div>
+      <button type="submit" class="btn btn-primary login-submit">登录</button>
+    </form>
+  </div>
+
+  <!-- 主界面 -->
+  <div id="app" class="app hidden">
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="brand">🐾 <span id="brand-title">YAYA MCC BOT</span></span>
+        <span id="conn-status" class="conn-status"></span>
+      </div>
+      <div class="topbar-right">
+        <label class="field-label">节点</label>
+        <select id="daemon-select" class="select" title="MCSM 远程节点"></select>
+        <span id="perf-status" class="perf-status" title="节点 CPU / 内存占用">--</span>
+        <input type="search" id="search-input" class="input search-input" placeholder="按名称搜索…">
+        <button id="refresh-btn" class="btn" title="刷新">🔄 刷新</button>
+        <button id="oplog-btn" class="btn btn-ghost" title="查看操作日志">操作日志</button>
+        <button id="theme-toggle" class="btn btn-ghost" title="切换黑夜/白天模式">🌙</button>
+        <button id="logout-btn" class="btn btn-ghost" title="退出登录">退出</button>
+      </div>
+    </header>
+
+    <div class="toolbar">
+      <label class="check-all">
+        <input type="checkbox" id="select-all">
+        <span>全选</span>
+      </label>
+      <span id="selected-count" class="selected-count">未选择</span>
+      <div class="toolbar-actions">
+        <button id="batch-start" class="btn btn-sm" title="批量启动">▶ 启动</button>
+        <button id="batch-stop" class="btn btn-sm" title="批量停止">■ 停止</button>
+        <button id="batch-restart" class="btn btn-sm" title="批量重启">↻ 重启</button>
+        <button id="batch-delete" class="btn btn-sm btn-danger" title="批量删除选中实例">🗑 删除</button>
+        <button id="node-file-btn" class="btn btn-sm" title="管理节点文件系统">📁 节点文件</button>
+        <button id="template-btn" class="btn btn-sm" title="内置 MCC 模板管理">📦 模板</button>
+        <button id="create-instance-btn" class="btn btn-sm btn-primary" title="创建新的 MCC 实例">＋ 创建实例</button>
+      </div>
+      <span id="list-summary" class="list-summary"></span>
+    </div>
+
+    <main class="content">
+      <div id="instance-grid" class="instance-grid"></div>
+      <div id="empty-state" class="empty-state hidden">
+        <div class="empty-icon">🗂️</div>
+        <p id="empty-text">暂无实例</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- 详情抽屉 -->
+  <div id="drawer-overlay" class="drawer-overlay hidden"></div>
+  <aside id="drawer" class="drawer hidden">
+    <div class="drawer-header">
+      <div class="drawer-title-wrap">
+        <span id="drawer-status-dot" class="status-dot"></span>
+        <h2 id="drawer-title">实例详情</h2>
+      </div>
+      <div class="drawer-actions">
+        <button id="drawer-start" class="btn btn-sm">▶ 启动</button>
+        <button id="drawer-stop" class="btn btn-sm">■ 停止</button>
+        <button id="drawer-restart" class="btn btn-sm">↻ 重启</button>
+        <button id="drawer-kill" class="btn btn-sm btn-danger" title="强制终止">✕ 强杀</button>
+        <button id="drawer-delete" class="btn btn-sm btn-danger" title="删除实例">🗑 删除</button>
+        <button id="drawer-close" class="btn btn-sm btn-ghost">关闭</button>
+      </div>
+    </div>
+    <div class="drawer-meta" id="drawer-meta"></div>
+
+    <nav class="tabs">
+      <button class="tab active" data-tab="log">日志</button>
+      <button class="tab" data-tab="command">命令</button>
+      <button class="tab" data-tab="inventory">背包</button>
+      <button class="tab" data-tab="scripts">脚本</button>
+      <button class="tab" data-tab="config">配置</button>
+      <button class="tab" data-tab="files">文件</button>
+    </nav>
+
+    <div class="tab-body">
+      <!-- 日志 -->
+      <section id="tab-log" class="tab-panel">
+        <div class="panel-toolbar">
+          <label class="check-all"><input type="checkbox" id="log-autoscroll" checked><span>自动滚动</span></label>
+          <label class="check-all"><input type="checkbox" id="log-live" checked><span>实时刷新</span></label>
+          <span id="log-size" class="list-summary"></span>
+          <button id="log-clear" class="btn btn-sm">清空显示</button>
+        </div>
+        <pre id="log-output" class="log-output"></pre>
+        <div class="log-chat">
+          <input type="text" id="log-chat-input" class="input log-chat-input" placeholder="发消息到游戏聊天（回车发送）…" autocomplete="off">
+          <button id="log-chat-send" class="btn btn-primary">发送</button>
+        </div>
+      </section>
+
+      <!-- 命令 -->
+      <section id="tab-command" class="tab-panel hidden">
+        <p class="panel-hint">向 MCC 控制台(stdin)发送指令。MCC 内部命令以 <code>/</code> 开头（如 <code>/quit</code>、<code>/reco</code>），直接输入文本则发送到游戏聊天。</p>
+        <div class="quick-commands">
+          <span class="panel-hint">快捷命令：</span>
+          <button class="btn btn-sm qcmd" data-cmd="/list">在线玩家</button>
+          <button class="btn btn-sm qcmd" data-cmd="/tab">玩家列表(详细)</button>
+          <button class="btn btn-sm qcmd" data-cmd="/send /home">回家</button>
+          <button class="btn btn-sm qcmd" data-cmd="/send /back">回溯</button>
+          <button class="btn btn-sm qcmd" data-cmd="/send /tpaccept">接受传送</button>
+          <button class="btn btn-sm qcmd" data-cmd="/book read">读书</button>
+          <button class="btn btn-sm qcmd" data-fill="/bed sleep ">睡觉</button>
+          <button class="btn btn-sm qcmd" data-fill="/dropitem ">丢物品</button>
+          <button class="btn btn-sm qcmd" data-cmd="/effects">状态效果</button>
+          <button class="btn btn-sm qcmd" data-cmd="/reco">重连</button>
+          <button class="btn btn-sm qcmd" data-cmd="/respawn">重生</button>
+        </div>
+        <form id="command-form" class="command-form" autocomplete="off">
+          <input type="text" id="command-input" class="input command-input" placeholder="输入命令，回车发送…" autocomplete="off">
+          <button type="submit" class="btn btn-primary">发送</button>
+        </form>
+        <div class="command-result" id="command-result"></div>
+        <div class="command-history-wrap">
+          <h3>历史</h3>
+          <ul id="command-history" class="command-history"></ul>
+        </div>
+      </section>
+
+      <!-- 配置 -->
+      <section id="tab-config" class="tab-panel hidden">
+        <p class="panel-hint">实例配置表单，保存后立即生效；修改启动命令前建议先停止实例。</p>
+        <div class="config-form">
+          <label class="form-label">实例名称 · nickname
+            <input id="cfg-nickname" class="input" placeholder="实例显示名称">
+          </label>
+          <label class="form-label">启动命令 · startCommand
+            <input id="cfg-start" class="input mono-input" placeholder="如 /mcc/bot/MinecraftClient...">
+          </label>
+          <label class="form-label">停止命令 · stopCommand
+            <input id="cfg-stop" class="input mono-input" placeholder="如 ^c 或 stop / exit">
+          </label>
+          <label class="form-label">工作目录 · cwd
+            <input id="cfg-cwd" class="input mono-input" placeholder="如 /mcc/bot_name">
+          </label>
+          <label class="form-label">停止超时 · stopTimeout（秒，0=默认）
+            <input id="cfg-stop-timeout" type="number" class="input" placeholder="0">
+          </label>
+          <div class="config-checks">
+            <label class="check-all"><input type="checkbox" id="cfg-autostart"><span>开机自启 · autoStart</span></label>
+            <label class="check-all"><input type="checkbox" id="cfg-autorestart"><span>崩溃自动重启 · autoRestart</span></label>
+            <label class="check-all"><input type="checkbox" id="cfg-color"><span>终端颜色 · haveColor</span></label>
+          </div>
+          <label class="form-label">最大自动重启次数 · autoRestartMaxTimes
+            <input id="cfg-autorestart-max" type="number" class="input" placeholder="3">
+          </label>
+        </div>
+
+        <details class="config-advanced">
+          <summary>高级 · JSON 编辑（点击展开）</summary>
+          <div class="config-toolbar">
+            <button id="config-reload" class="btn btn-sm">重新加载</button>
+            <button id="config-save-json" class="btn btn-sm btn-primary">保存 JSON</button>
+            <span id="config-json-result" class="command-result"></span>
+          </div>
+          <textarea id="config-editor" class="config-editor" spellcheck="false"></textarea>
+        </details>
+
+        <div class="config-toolbar">
+          <button id="config-save" class="btn btn-primary">保存配置</button>
+          <span id="config-result" class="command-result"></span>
+        </div>
+      </section>
+
+      <!-- 文件 -->
+      <section id="tab-files" class="tab-panel hidden">
+        <div class="files-breadcrumb">
+          <span class="panel-hint">目录：</span>
+          <span id="file-path" class="file-path">/</span>
+          <button id="file-up" class="btn btn-sm" title="上级目录">上级</button>
+          <button id="file-refresh" class="btn btn-sm">刷新</button>
+        </div>
+        <div class="files-toolbar">
+          <button id="file-new" class="btn btn-sm">＋ 新建文件</button>
+          <button id="file-mkdir" class="btn btn-sm">新建目录</button>
+          <button id="file-rename" class="btn btn-sm">重命名</button>
+          <button id="file-copy" class="btn btn-sm">复制</button>
+          <button id="file-paste" class="btn btn-sm">粘贴</button>
+          <button id="file-delete" class="btn btn-sm btn-danger">删除</button>
+          <span id="file-op-result" class="command-result"></span>
+        </div>
+        <div id="file-list" class="file-list"></div>
+        <div id="file-editor-wrap" class="hidden">
+          <div class="config-toolbar">
+            <span id="file-editor-name" class="file-path"></span>
+            <button id="file-save" class="btn btn-sm btn-primary">保存文件</button>
+            <button id="file-close" class="btn btn-sm btn-ghost">关闭编辑</button>
+            <span id="file-result" class="command-result"></span>
+          </div>
+          <textarea id="file-editor" class="config-editor" spellcheck="false"></textarea>
+        </div>
+      </section>
+
+      <!-- 背包 -->
+      <section id="tab-inventory" class="tab-panel hidden">
+        <div class="inv-top">
+          <button id="inv-refresh" class="btn btn-primary">刷新背包</button>
+          <button id="inv-enable" class="btn btn-sm" title="修改 MinecraftClient.ini 开启 InventoryHandling（需重启实例）">开启 InventoryHandling</button>
+          <button id="inv-disable" class="btn btn-sm" title="修改 MinecraftClient.ini 关闭 InventoryHandling（需重启实例）">关闭 InventoryHandling</button>
+          <button id="inv-drop-one" class="btn btn-sm btn-danger">丢弃选中格</button>
+          <button id="inv-drop-all" class="btn btn-sm btn-danger">丢弃选中格全部</button>
+          <button id="inv-timestamp" class="btn btn-sm" title="修改 MinecraftClient.ini 开启消息时间戳（需重启实例）">开启消息时间戳</button>
+          <span id="inv-status" class="command-result"></span>
+        </div>
+        <div class="inv-layout">
+          <div class="inv-side">
+            <div class="inv-side-label">副手</div>
+            <div id="inv-offhand" class="inv-slot inv-slot-side"></div>
+            <div class="inv-side-label">装备</div>
+            <div id="inv-armor" class="inv-armor"></div>
+          </div>
+          <div class="inv-main">
+            <div id="inv-main-grid" class="inv-main-grid"></div>
+            <div id="inv-hotbar" class="inv-hotbar"></div>
+          </div>
+        </div>
+        <div id="inv-detail" class="inv-detail hidden">
+          <span id="inv-detail-text" class="panel-hint"></span>
+        </div>
+        <p class="panel-hint">点击格子查看物品；丢弃请点上方按钮（对选中格生效）。前提：已开启 InventoryHandling 并重启实例、且已连接服务器。</p>
+      </section>
+
+      <!-- 脚本 -->
+      <section id="tab-scripts" class="tab-panel hidden">
+        <div class="inv-top">
+          <button id="script-new" class="btn btn-primary">＋ 新建脚本</button>
+          <button id="script-refresh" class="btn btn-sm">刷新</button>
+          <span id="script-status" class="command-result"></span>
+        </div>
+        <div id="script-list" class="file-list"></div>
+        <div id="script-editor-wrap" class="hidden">
+          <div class="config-toolbar">
+            <span id="script-editor-name" class="file-path"></span>
+            <button id="script-save" class="btn btn-sm btn-primary">保存</button>
+            <button id="script-run" class="btn btn-sm">运行</button>
+            <button id="script-close" class="btn btn-sm btn-ghost">关闭</button>
+            <span id="script-editor-result" class="command-result"></span>
+          </div>
+          <textarea id="script-editor" class="config-editor" spellcheck="false"></textarea>
+        </div>
+        <p class="panel-hint">MCC 脚本为文本文件（每行一条命令），保存后点「运行」执行 <code>/script &lt;文件名&gt;</code>。</p>
+      </section>
+
+      <!-- 操作日志 -->
+    </div>
+  </aside>
+
+  <!-- 操作日志模态框（主界面） -->
+  <div id="oplog-overlay" class="modal-overlay hidden">
+    <div class="modal modal-wide">
+      <div class="modal-head">
+        <h2 class="modal-title">操作日志</h2>
+        <div class="modal-actions">
+          <button id="oplog-refresh" class="btn btn-sm">刷新</button>
+          <button id="oplog-close" class="btn btn-ghost">关闭</button>
+        </div>
+      </div>
+      <div id="oplog-list" class="oplog-list oplog-modal-list"></div>
+    </div>
+  </div>
+
+  <!-- 内置 MCC 模板模态框 -->
+  <div id="template-overlay" class="modal-overlay hidden">
+    <div class="modal modal-wide">
+      <div class="modal-head">
+        <h2 class="modal-title">内置 MCC 模板</h2>
+        <div class="modal-actions">
+          <button id="template-init" class="btn btn-sm" title="从 daemon 容器实例目录拉取到面板模板">从实例初始化</button>
+          <button id="template-upload-btn" class="btn btn-sm btn-primary">上传文件</button>
+          <input type="file" id="template-file-input" class="hidden">
+          <button id="template-close" class="btn btn-ghost">关闭</button>
+        </div>
+      </div>
+      <p class="panel-hint">模板存放于面板服务器 <code>/opt/mcc-panel/templates/mcc/</code>，新建实例从模板复制（不再依赖其他实例）。换新版本 MCC 时，点「上传文件」上传新的可执行文件/配置替换即可。</p>
+      <div id="template-list" class="file-list nodefile-list"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- 创建实例模态框 -->
+  <div id="create-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <h2 class="modal-title">创建 MCC 实例</h2>
+      <form id="create-form" autocomplete="off">
+        <label class="form-label">Bot 名称
+          <input type="text" id="create-name" class="input" required placeholder="如 bot_alpha">
+        </label>
+        <label class="form-label">服务器 IP / 域名
+          <input type="text" id="create-ip" class="input" required placeholder="mc.example.com">
+        </label>
+        <label class="form-label">端口（留空 = MCC 自动解析）
+          <input type="number" id="create-port" class="input" placeholder="25565">
+        </label>
+        <label class="form-label">账号类型
+          <select id="create-acctype" class="select">
+            <option value="offline">离线（游戏名登录）</option>
+            <option value="microsoft">微软正版（设备码登录）</option>
+          </select>
+        </label>
+        <label class="form-label">登录名
+          <input type="text" id="create-login" class="input" required placeholder="离线填游戏名 / 微软填邮箱">
+        </label>
+        <label class="check-all">
+          <input type="checkbox" id="create-tpa" checked>
+          <span>自动接取 tpa / tphere 传送（AutoRespond）</span>
+        </label>
+        <div id="create-result" class="command-result"></div>
+        <div class="modal-actions">
+          <button type="submit" class="btn btn-primary">创建</button>
+          <button type="button" id="create-cancel" class="btn btn-ghost">取消</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 节点文件管理模态框 -->
+  <div id="nodefile-overlay" class="modal-overlay hidden">
+    <div class="modal modal-wide">
+      <div class="modal-head">
+        <h2 class="modal-title">节点文件管理</h2>
+        <button id="nodefile-close" class="btn btn-ghost">关闭</button>
+      </div>
+      <div class="files-breadcrumb">
+        <span class="panel-hint">路径：</span>
+        <span id="nodefile-path" class="file-path">/mcc</span>
+        <button id="nodefile-up" class="btn btn-sm">上级</button>
+        <button id="nodefile-refresh" class="btn btn-sm">刷新</button>
+      </div>
+      <div class="files-toolbar">
+        <button id="nodefile-new" class="btn btn-sm">＋ 新建文件</button>
+        <button id="nodefile-mkdir" class="btn btn-sm">新建目录</button>
+        <button id="nodefile-rename" class="btn btn-sm">重命名</button>
+        <button id="nodefile-copy" class="btn btn-sm">复制</button>
+        <button id="nodefile-paste" class="btn btn-sm">粘贴</button>
+        <button id="nodefile-delete" class="btn btn-sm btn-danger">删除</button>
+        <span id="nodefile-result" class="command-result"></span>
+      </div>
+      <div id="nodefile-list" class="file-list nodefile-list"></div>
+      <div id="nodefile-editor-wrap" class="hidden">
+        <div class="config-toolbar">
+          <span id="nodefile-editor-name" class="file-path"></span>
+          <button id="nodefile-save" class="btn btn-sm btn-primary">保存</button>
+          <button id="nodefile-close-editor" class="btn btn-sm btn-ghost">关闭编辑</button>
+          <span id="nodefile-editor-result" class="command-result"></span>
+        </div>
+        <textarea id="nodefile-editor" class="config-editor" spellcheck="false"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <script src="api.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
