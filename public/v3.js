@@ -497,6 +497,166 @@
   // ---------------------------------------------------------------------------
   async function loadTransferTab() {
     await loadInstanceOptions($('#v3-clone-instance'), false);
+    await loadTransferDaemons();
+    renderTransferDaemonSelect();
+    await loadExportList();
+  }
+
+  // ---- 导入导出：节点列表 / 导出勾选表格 / 导入解析预览 ----
+  let transferDaemons = []; // 当前 MCSM 节点列表（导出表格与导入兜底节点共用）
+  let importParsed = [];    // 解析预览对应的实例数组
+
+  async function loadTransferDaemons() {
+    try {
+      const r = await api.daemons();
+      transferDaemons = (r && r.data) || [];
+    } catch (e) {
+      transferDaemons = [];
+    }
+  }
+
+  function renderTransferDaemonSelect() {
+    const sel = $('#v3-import-fallback-daemon');
+    if (!sel) return;
+    sel.innerHTML = transferDaemons.map((d) =>
+      `<option value="${escapeHtml(d.uuid)}">${escapeHtml(d.remarks || d.ip || d.uuid)}</option>`
+    ).join('') || '<option value="">（无可用节点）</option>';
+  }
+
+  function transferDaemonName(daemonId) {
+    const d = transferDaemons.find((x) => x.uuid === daemonId);
+    return d ? (d.remarks || d.ip || d.uuid) : '';
+  }
+
+  async function loadExportList() {
+    const tbody = $('#v3-export-table tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="4" class="v3-panel-hint">加载中…</td></tr>';
+    try {
+      await loadTransferDaemons();
+      const rows = [];
+      for (const d of transferDaemons) {
+        const iR = await api.instances({ daemonId: d.uuid, page: 1, page_size: 100 });
+        const list = (iR.data && iR.data.data) || [];
+        for (const inst of list) {
+          const nick = (inst.config && inst.config.nickname) || inst.nickname || inst.name || inst.instanceUuid;
+          rows.push({
+            key: d.uuid + '::' + inst.instanceUuid,
+            node: d.remarks || d.ip || d.uuid,
+            name: nick,
+            status: String(inst.status == null ? '' : inst.status)
+          });
+        }
+      }
+      if (rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="v3-panel-hint">无实例</td></tr>';
+        updateExportSelCount();
+        return;
+      }
+      tbody.innerHTML = rows.map((r) => `
+        <tr>
+          <td><input type="checkbox" class="v3-export-row" value="${escapeHtml(r.key)}" checked></td>
+          <td>${escapeHtml(r.node)}</td>
+          <td>${escapeHtml(r.name)}</td>
+          <td>${badge(r.status)}</td>
+        </tr>`).join('');
+      updateExportSelCount();
+    } catch (e) {
+      tbody.innerHTML = `<tr><td colspan="4" class="v3-panel-hint">加载失败: ${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  function exportCheckedKeys() {
+    return Array.from(document.querySelectorAll('#v3-export-table .v3-export-row:checked')).map((c) => c.value);
+  }
+
+  function updateExportSelCount() {
+    const rows = document.querySelectorAll('#v3-export-table .v3-export-row');
+    const n = document.querySelectorAll('#v3-export-table .v3-export-row:checked').length;
+    const btn = $('#v3-export-sel');
+    if (btn) btn.textContent = '导出所选' + (n ? ' (' + n + ')' : '');
+    const all = $('#v3-export-sel-all');
+    if (all) all.checked = rows.length > 0 && n === rows.length;
+  }
+
+  /** 解析导入输入框内容：支持 {instances:[...]} 或直接数组。 */
+  function parseImportInput() {
+    const raw = $('#v3-import-in').value.trim();
+    if (!raw) return { error: '请先粘贴 JSON 或选择 JSON 文件' };
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      return { error: 'JSON 解析失败: ' + e.message };
+    }
+    const arr = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.instances) ? parsed.instances : null);
+    if (!arr) return { error: '未找到 instances 数组（支持 {instances:[...]} 或直接数组）' };
+    if (arr.length === 0) return { error: 'instances 为空' };
+    return { list: arr };
+  }
+
+  function renderImportPreview(list) {
+    const wrap = $('#v3-import-preview-wrap');
+    const tbody = $('#v3-import-preview tbody');
+    if (!wrap || !tbody) return;
+    wrap.classList.remove('hidden');
+    importParsed = list;
+    tbody.innerHTML = list.map((it, idx) => {
+      const name = String(it.name || '').trim();
+      const serverIp = String(it.serverIp || '').trim();
+      const login = String(it.accountLogin || '').trim();
+      const port = it.serverPort == null ? '' : String(it.serverPort);
+      const accountType = it.accountType === 'offline' ? '离线' : '微软';
+      const knownNode = transferDaemonName(it.daemonId);
+      const errors = [];
+      if (!name) errors.push('缺实例名');
+      if (!serverIp) errors.push('缺服务器地址');
+      if (!login) errors.push('缺登录名');
+      const okRow = errors.length === 0;
+      const nodeCell = knownNode ? escapeHtml(knownNode) : '（下方节点）';
+      return `<tr>
+        <td><input type="checkbox" class="v3-import-row" data-idx="${idx}" ${okRow ? 'checked' : 'disabled'}></td>
+        <td>${escapeHtml(name || '-')}</td>
+        <td>${escapeHtml(serverIp || '-')}${port ? ':' + escapeHtml(port) : ''}</td>
+        <td>${escapeHtml(accountType)}${login ? ' ' + escapeHtml(login) : ''}</td>
+        <td>${nodeCell}</td>
+        <td>${errors.length ? '<span class="command-result">' + escapeHtml(errors.join('、')) + '</span>' : '可导入'}</td>
+      </tr>`;
+    }).join('');
+    updateImportSelCount();
+  }
+
+  function importCheckedItems() {
+    const idxs = Array.from(document.querySelectorAll('#v3-import-preview .v3-import-row:checked'))
+      .map((c) => Number(c.dataset.idx));
+    return idxs.map((i) => importParsed[i]).filter(Boolean);
+  }
+
+  function updateImportSelCount() {
+    const rows = document.querySelectorAll('#v3-import-preview .v3-import-row:not([disabled])');
+    const n = document.querySelectorAll('#v3-import-preview .v3-import-row:checked').length;
+    const btn = $('#v3-import-sel');
+    if (btn) btn.textContent = '导入所选' + (n ? ' (' + n + ')' : '');
+    const all = $('#v3-import-sel-all');
+    if (all) all.checked = rows.length > 0 && n === rows.length;
+  }
+
+  async function importSelected() {
+    const items = importCheckedItems();
+    if (items.length === 0) { toast('没有勾选可导入的实例', 'err'); return; }
+    const fallback = $('#v3-import-fallback-daemon').value;
+    // 原 daemonId 在当前节点列表找不到时清空，交给 defaultDaemonId 兜底节点创建
+    const payload = items.map((it) => (transferDaemonName(it.daemonId) ? it : Object.assign({}, it, { daemonId: '' })));
+    if (!confirm(`将导入所选 ${payload.length} 个实例，确认继续？`)) return;
+    try {
+      $('#v3-import-sel-result').textContent = '导入中…';
+      const r = await api.v3Post('instances/import', { instances: payload, defaultDaemonId: fallback });
+      const d = r.data || {};
+      $('#v3-import-sel-result').textContent = `成功 ${d.created.length}，失败 ${d.failed.length}` +
+        (d.failed.length ? '。' + d.failed.map((f) => f.name + ': ' + f.error).join('；').slice(0, 200) : '');
+      toast(`导入完成：成功 ${d.created.length}，失败 ${d.failed.length}`);
+      loadExportList();
+    } catch (e) { $('#v3-import-sel-result').textContent = e.message; }
   }
 
   function download(filename, content, mime) {
@@ -802,11 +962,61 @@
         $('#v3-export-result').textContent = `已导出 ${r.data.instances.length} 个实例`;
       } catch (e) { $('#v3-export-result').textContent = e.message; }
     });
+    $('#v3-export-sel').addEventListener('click', async () => {
+      const keys = exportCheckedKeys();
+      if (keys.length === 0) { toast('请勾选要导出的实例', 'err'); return; }
+      try {
+        $('#v3-export-result').textContent = '导出中…';
+        const r = await api.v3Get('instances/export', { includeIni: $('#v3-export-ini').checked, uuids: keys.join(',') });
+        $('#v3-export-out').value = JSON.stringify(r.data, null, 2);
+        $('#v3-export-result').textContent = `已导出 ${r.data.instances.length} 个实例`;
+      } catch (e) { $('#v3-export-result').textContent = e.message; }
+    });
+    $('#v3-export-sel-all').addEventListener('change', (e) => {
+      document.querySelectorAll('#v3-export-table .v3-export-row').forEach((c) => { c.checked = e.target.checked; });
+      updateExportSelCount();
+    });
+    $('#v3-export-table').addEventListener('change', (e) => {
+      if (e.target.classList.contains('v3-export-row')) updateExportSelCount();
+    });
     $('#v3-export-download').addEventListener('click', () => {
       const text = $('#v3-export-out').value;
       if (!text) { toast('请先导出', 'err'); return; }
       download('mcc-panel-instances-export.json', text, 'application/json');
     });
+    $('#v3-import-file-btn').addEventListener('click', () => $('#v3-import-file').click());
+    $('#v3-import-file').addEventListener('change', (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        $('#v3-import-in').value = String(reader.result || '');
+        $('#v3-import-parse-result').textContent = '已读取 ' + f.name + '，点击「解析预览」查看';
+        e.target.value = '';
+      };
+      reader.onerror = () => toast('文件读取失败', 'err');
+      reader.readAsText(f);
+    });
+    $('#v3-import-parse').addEventListener('click', async () => {
+      await loadTransferDaemons();
+      renderTransferDaemonSelect();
+      const res = parseImportInput();
+      if (res.error) {
+        $('#v3-import-parse-result').textContent = res.error;
+        $('#v3-import-preview-wrap').classList.add('hidden');
+        return;
+      }
+      renderImportPreview(res.list);
+      $('#v3-import-parse-result').textContent = `已解析 ${res.list.length} 个实例，勾选后点「导入所选」`;
+    });
+    $('#v3-import-sel-all').addEventListener('change', (e) => {
+      document.querySelectorAll('#v3-import-preview .v3-import-row:not([disabled])').forEach((c) => { c.checked = e.target.checked; });
+      updateImportSelCount();
+    });
+    $('#v3-import-preview').addEventListener('change', (e) => {
+      if (e.target.classList.contains('v3-import-row')) updateImportSelCount();
+    });
+    $('#v3-import-sel').addEventListener('click', importSelected);
     $('#v3-import').addEventListener('click', async () => {
       const raw = $('#v3-import-in').value.trim();
       if (!raw) { toast('请粘贴导入 JSON', 'err'); return; }
@@ -827,6 +1037,7 @@
         $('#v3-import-result').textContent = `成功 ${d.created.length}，失败 ${d.failed.length}` +
           (d.failed.length ? '。' + d.failed.map((f) => f.name + ': ' + f.error).join('；').slice(0, 200) : '');
         toast(`导入完成：成功 ${d.created.length}，失败 ${d.failed.length}`);
+        loadExportList();
       } catch (e) { $('#v3-import-result').textContent = e.message; }
     });
     $('#v3-clone').addEventListener('click', async () => {

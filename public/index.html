@@ -198,18 +198,44 @@
           <section id="v3-transfer" class="v3-panel">
           <div class="v3-section-title">实例配置批量导出（JSON）</div>
           <div class="v3-btn-row">
+            <label class="check-all"><input type="checkbox" id="v3-export-sel-all" checked><span>全选</span></label>
+            <button id="v3-export-sel" class="btn btn-primary">导出所选</button>
             <button id="v3-export" class="btn btn-primary">导出全部实例</button>
             <label class="check-all"><input type="checkbox" id="v3-export-ini"><span>包含 MinecraftClient.ini 内容</span></label>
             <button id="v3-export-download" class="btn btn-sm">下载 JSON</button>
             <span id="v3-export-result" class="command-result"></span>
           </div>
-          <textarea id="v3-export-out" class="config-editor" spellcheck="false" placeholder="点击「导出全部实例」后这里显示导出的 JSON…"></textarea>
+          <div class="v3-table-wrap">
+            <table class="v3-table" id="v3-export-table">
+              <thead><tr><th>选择</th><th>节点</th><th>实例名</th><th>状态</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <textarea id="v3-export-out" class="config-editor" spellcheck="false" placeholder="点击「导出所选」或「导出全部实例」后这里显示导出的 JSON…"></textarea>
 
           <div class="v3-section-title">批量导入（JSON，格式与导出一致）</div>
-          <p class="panel-hint">粘贴导出的 JSON（或导出文本的实例数组）到下方，点击导入按实例逐条创建。离线账号的登录名会按实例名自动生成。</p>
-          <textarea id="v3-import-in" class="config-editor" spellcheck="false" placeholder='{"instances": [{ "name": "bot1", "serverIp": "mc.example.com", "serverPort": 25565, "accountType": "offline", "accountLogin": "bot1" }]}'></textarea>
+          <p class="panel-hint">可直接选择导出的 JSON 文件，或粘贴 JSON 到下方后点「解析预览」勾选要导入的实例；「导入所选」只创建勾选项。离线账号的登录名会按实例名自动生成。</p>
           <div class="v3-btn-row">
-            <button id="v3-import" class="btn btn-primary need-admin">导入创建</button>
+            <input type="file" id="v3-import-file" accept=".json,application/json" class="hidden">
+            <button id="v3-import-file-btn" class="btn btn-sm">选择 JSON 文件</button>
+            <button id="v3-import-parse" class="btn btn-sm">解析预览</button>
+            <span id="v3-import-parse-result" class="command-result"></span>
+          </div>
+          <textarea id="v3-import-in" class="config-editor" spellcheck="false" placeholder='{"instances": [{ "name": "bot1", "serverIp": "mc.example.com", "serverPort": 25565, "accountType": "offline", "accountLogin": "bot1" }]}'></textarea>
+          <div id="v3-import-preview-wrap" class="v3-table-wrap hidden">
+            <div class="v3-btn-row">
+              <label class="check-all"><input type="checkbox" id="v3-import-sel-all" checked><span>全选</span></label>
+              <select id="v3-import-fallback-daemon" class="select" title="未匹配到节点时创建到该节点"></select>
+              <button id="v3-import-sel" class="btn btn-primary need-admin">导入所选</button>
+              <span class="command-result" id="v3-import-sel-result"></span>
+            </div>
+            <table class="v3-table" id="v3-import-preview">
+              <thead><tr><th>选择</th><th>实例名</th><th>服务器</th><th>账号</th><th>目标节点</th><th>提示</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="v3-btn-row">
+            <button id="v3-import" class="btn btn-primary need-admin">导入创建（全部）</button>
             <span id="v3-import-result" class="command-result"></span>
           </div>
 
