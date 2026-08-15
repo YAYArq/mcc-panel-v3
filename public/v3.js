@@ -115,7 +115,9 @@
         for (const inst of list) {
           const opt = document.createElement('option');
           opt.value = d.uuid + '::' + inst.instanceUuid;
-          opt.textContent = inst.name + ' (' + (d.remarks || d.name || d.uuid) + ')';
+          // 实例名在 config.nickname（MCSM 列表接口无顶层 name 字段，直接取 inst.name 会显示 undefined）
+          const nick = (inst.config && inst.config.nickname) || inst.nickname || inst.name || inst.instanceUuid;
+          opt.textContent = nick + ' (' + (d.remarks || d.name || d.uuid) + ')';
           opt.dataset.daemonId = d.uuid;
           opt.dataset.uuid = inst.instanceUuid;
           selectEl.appendChild(opt);
@@ -140,7 +142,7 @@
 
   /** 魔改操作的目标实例：优先取抽屉实例，兼容旧的下拉选择。 */
   function modTarget() {
-    return drawerModInstance || modTarget();
+    return drawerModInstance || null;
   }
 
   /** app.js 打开实例抽屉时调用，设置魔改面板的目标实例。 */
