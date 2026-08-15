@@ -1,13 +1,13 @@
 # MCC-panel-v3
-依旧写点史
+
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D16-brightgreen.svg)](package.json)
 
-一个通过 **MCSManager (MCSM)** 控制 **MCC (Minecraft Console Client)** bot 实例的网页面板，可部署在服务器上。UI 风格与交互设计参考并感谢 [APRme/MULTIBOT_PANEL](https://github.com/APRme/MULTIBOT_PANEL)，UI 风格融合明日方舟 × 女神异闻录 3/4。
+一个通过 **MCSManager (MCSM)** 控制 **MCC (Minecraft Console Client)** bot 实例的现代网页面板：粉色设计系统、侧栏锚点导航、全屏 Hero 与单页滚动章节布局，零第三方依赖，可部署在任意 Linux 服务器。
 
-**v3 增强版**：在 v2 全部功能之上，叠加了实例健康监控、自动化（定时任务/掉线自动重连/防 AFK/开机自启组）、MCC 客户端"魔改"（自定义聊天指令/多服务器切换/原生功能注入）、批量导入导出与克隆、操作日志筛选导出、权限分级与 IP 白名单。
+**核心能力**：实例批量管控（启停/重启/强杀/命令/日志/配置/文件/背包/脚本）、健康监控与消息统计、自动化（cron 定时任务/掉线自动重连/防 AFK/开机自启组）、MCC 客户端魔改（可视化设置/聊天指令/多服务器切换/tpa 正则/原生功能注入/挂机脚本）、批量导入导出与克隆、操作日志审计、三级权限体系（管理员/普通用户/只读）与实例级授权、IP 白名单、正版皮肤头像、原版物品贴图背包。
 
-**零第三方依赖**：只需 Node.js（≥16），无需 `npm install`。
+**零第三方依赖**：只需 Node.js（≥16），无需 `npm install`。UI 参考并致谢 [APRme/MULTIBOT_PANEL](https://github.com/APRme/MULTIBOT_PANEL)。
 
 ## 功能
 
@@ -19,7 +19,7 @@
 - 节点文件管理器、内置 MCC 模板管理（上传/删除/从容器初始化）、操作日志审计
 - 深色/日间主题、UUID 头像、healthz
 
-### v3 增强功能（顶栏「🚀 增强」主页标签页进入，不单独开视图）
+### v3 增强功能（单页滚动章节布局：全屏 Hero → 01 实例 → 02 数据 → 03 自动化 → 04 导入导出 → 05 操作日志，侧栏锚点导航）
 
 1. **实例健康监控面板**：在线时长（当前/累计/最长）、重启次数、掉线次数、消息统计（今日/累计/近 30 天柱状图），列表显示实例名
 2. **自动化**：
