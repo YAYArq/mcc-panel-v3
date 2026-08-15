@@ -467,7 +467,8 @@ async function createMcsmInstance(mcsm, body, panelConfig) {
   let finalTpaRegex = '';
   if (autoAcceptTpa) {
     finalTpaRegex = String(body.tpaRegex || mccMod.defaultTeleportRegex()).replace(/["\r\n]/g, '');
-    ini = mccMod.setKey(ini, 'ChatFormat', 'TeleportRequest', '"' + finalTpaRegex + '"');
+    // TOML 单引号字面量字符串：正则中的反斜杠（如 \[）原样保留，避免双引号转义歧义
+    ini = mccMod.setKey(ini, 'ChatFormat', 'TeleportRequest', "'" + finalTpaRegex + "'");
     ini = mccMod.setKey(ini, 'ChatBot.RemoteControl', 'Enabled', 'true');
     ini = mccMod.setKey(ini, 'ChatBot.RemoteControl', 'AutoTpaccept', 'true');
     ini = mccMod.setKey(ini, 'ChatBot.RemoteControl', 'AutoTpaccept_Everyone', 'false');

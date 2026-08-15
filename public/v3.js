@@ -473,6 +473,7 @@
         <td><input type="text" class="input mono-input cmd-trigger" value="${escapeHtml(c.trigger || '')}" placeholder="!home"></td>
         <td><input type="text" class="input mono-input cmd-action" value="${escapeHtml(c.action || '')}" placeholder="send /home"></td>
         <td><input type="number" class="input cmd-cooldown" style="width:70px" value="${Number(c.cooldown) || 0}"></td>
+        <td><input type="text" class="input cmd-whitelist" value="${escapeHtml((c.whitelist || []).join(', '))}" placeholder="留空=所有人"></td>
         <td><label class="check-all"><input type="checkbox" class="cmd-enabled" ${c.enabled === false ? '' : 'checked'}></label></td>
         <td><button class="btn btn-sm btn-danger need-admin cmd-del">删除</button></td>
       </tr>`).join('');
@@ -827,6 +828,7 @@
         <td><input type="text" class="input mono-input cmd-trigger" placeholder="!ping"></td>
         <td><input type="text" class="input mono-input cmd-action" placeholder="send /ping"></td>
         <td><input type="number" class="input cmd-cooldown" style="width:70px" value="0"></td>
+        <td><input type="text" class="input cmd-whitelist" placeholder="留空=所有人"></td>
         <td><label class="check-all"><input type="checkbox" class="cmd-enabled" checked></label></td>
         <td><button class="btn btn-sm btn-danger need-admin cmd-del">删除</button></td>`;
       tbody.appendChild(row);
@@ -838,6 +840,7 @@
         trigger: tr.querySelector('.cmd-trigger').value.trim(),
         action: tr.querySelector('.cmd-action').value.trim(),
         cooldown: Number(tr.querySelector('.cmd-cooldown').value) || 0,
+        whitelist: (tr.querySelector('.cmd-whitelist').value || '').split(/[,，]/).map((s) => s.trim()).filter(Boolean),
         enabled: tr.querySelector('.cmd-enabled').checked
       })).filter((c) => c.trigger);
       try {

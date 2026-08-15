@@ -57,7 +57,8 @@ data/                # 运行时数据（gitignore）：health.json / schedules.
 
 ### 3. MCC 客户端魔改（全部配置/脚本实现，不改 C# 源码）
 - **可视化设置（手机设置风格）**：`/api/v3/mcc/settings` GET/PUT，按分组（账号与服务器/聊天与显示/传送请求/自动化/日志）读写 MinecraftClient.ini 常用项，只替换被修改键（lib/mcc-mod.js 的 setKey/parseSettings/applySettings，纯函数）。新版 MCC 段名：[ChatBot.AntiAFK] / [ChatBot.AutoRelog]（内嵌 Kick_Messages 列表）/ [ChatBot.RemoteControl] / [ChatFormat]；聊天类键在新版模板位于 Main.Advanced（旧版 Main.General，defs 双段 fallback）。
-- **自定义聊天指令**：`/api/v3/mcc/commands`（GET 读/PUT 写 matches.ini）。指令 = AutoRespond 规则（trigger → action，如 `!home` → `send /home`），保存实时生效。
+- **自定义聊天指令**：`/api/v3/mcc/commands`（GET 读/PUT 写 matches.ini）。指令 = AutoRespond 规则（trigger → action，如 `!home` → `send /home`），保存实时生效；每条规则可带**白名单**（逗号分隔游戏名，留空=所有人）：白名单通过「发言前缀+触发词」复合正则实现（兼容 `玩家 > 消息`/`玩家: 消息`/`<玩家> 消息` 三种格式，名字前须行首或非字母数字防包含误触），原始触发词与白名单以 `# 白名单: ... | 触发: ...` 注释回写供面板还原（parseMatchesIni 按 [Match] 行切块，勿用 `[^\[]*` 字符切块——复合正则含 `[`）。
+- **tpa 白名单 = BotOwners**（[Main.Advanced]，同时是 /tell 远程控制名单）；面板设置页「传送请求(tpa)」分组含「传送白名单(BotOwners)」多行编辑与自动接受/接受所有人/正则三项；**文本类设置值一律 TOML 单引号字面量写入**（serializeValue/simpleDef），提取时剥离成对引号（convertValue）；createMcsmInstance 写 TeleportRequest 也用单引号（双引号下 `\[` 是非法 TOML 转义）。默认传送正则含 TSL 中文提示且**不加 ^ 锚点**（TSL 行首有 ▌ 装饰符）。
 - **多服务器切换**：`/api/v3/mcc/servers`（servers.txt 管理）+ `/api/v3/mcc/switch-server`（更新 servers.txt + 改写 ini 的 `Server` 行 + 运行中发 `connect <别名>` 即时切换）。
 - **传送请求（tpa）**：创建实例 body 可带 tpaRegex（默认 `mccMod.defaultTeleportRegex()`，兼容中英文插件提示）；写入 ChatFormat.TeleportRequest + RemoteControl.AutoTpaccept + matches.ini 兜底。设置页 `tp.regex` 可随时改。
 - **原生功能一键注入**：`/api/v3/mcc/apply-mod`（AntiAFK / AutoRelog / ScriptScheduler 段注入到 MinecraftClient.ini，需重启实例生效）。
