@@ -984,7 +984,7 @@ function createServer(options = {}) {
         if (role === 'user') {
           const deniedWrite = [
             '/api/v3/users', '/api/v3/schedules', '/api/v3/automation', '/api/v3/autostart-groups',
-            '/api/v3/health/reset', '/api/v3/instances/import', '/api/v3/instance/clone',
+            '/api/v3/health/reset', '/api/v3/health/prune', '/api/v3/instances/import', '/api/v3/instance/clone',
             '/api/instance/create', '/api/instance/delete', '/api/operation-logs'
           ].includes(pathname) || pathname.startsWith('/api/template/');
           const deniedGet = [

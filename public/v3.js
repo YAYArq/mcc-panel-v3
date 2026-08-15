@@ -558,6 +558,15 @@
 
     // 总览
     $('#v3-health-refresh').addEventListener('click', () => { loadHealth(); loadStats(); });
+    $('#v3-health-prune').addEventListener('click', async () => {
+      if (!confirm('清理已删除实例的历史健康统计？只移除 MCSM 中已不存在的实例条目，其余统计保留。')) return;
+      try {
+        const r = await api.v3Post('health/prune');
+        toast(r.data && r.data.removed ? '已清理 ' + r.data.removed + ' 条残留' : '没有需要清理的条目');
+        loadHealth();
+        loadOverview();
+      } catch (e) { toast(e.message, 'err'); }
+    });
     $('#v3-health-reset').addEventListener('click', async () => {
       if (!confirm('确定清空全部健康监控统计？此操作不可恢复。')) return;
       try { await api.v3Post('health/reset'); toast('已重置'); loadOverview(); } catch (e) { toast(e.message, 'err'); }
