@@ -132,6 +132,7 @@
   const logOutput = $('#log-output');
   const logChatInput = $('#log-chat-input');
   const logChatSend = $('#log-chat-send');
+  const logChatResult = $('#log-chat-result');
 
   const commandForm = $('#command-form');
   const commandInput = $('#command-input');
@@ -923,20 +924,25 @@
   logClear.addEventListener('click', () => { logOutput.textContent = ''; lastLogText = ''; fullLogLines = []; });
 
   // 日志过滤器（聊天与 MCC 命令反馈拆分显示，解决 MCC 刷屏时信息混杂）
+  function setLogFilterMode(mode) {
+    logFilterMode = mode || 'all';
+    document.querySelectorAll('#log-filter .log-chip').forEach((c) => {
+      c.classList.toggle('active', c.dataset.logfilter === logFilterMode);
+    });
+    applyLogFilter();
+  }
   document.querySelectorAll('#log-filter .log-chip').forEach((chip) => {
     chip.addEventListener('click', () => {
-      document.querySelectorAll('#log-filter .log-chip').forEach((c) => c.classList.remove('active'));
-      chip.classList.add('active');
-      logFilterMode = chip.dataset.logfilter || 'all';
-      applyLogFilter();
+      setLogFilterMode(chip.dataset.logfilter || 'all');
     });
   });
 
-  // 日志面板快捷发消息（不带 / 的文本 = 游戏聊天消息）
+  // 日志面板快捷发消息（不带 / 的文本 = 游戏聊天消息；/ 开头 = 游戏指令，自动转 send）
   logChatSend.addEventListener('click', () => {
-    const msg = logChatInput.value.trim();
+    let msg = logChatInput.value.trim();
     if (!msg || !currentInstance) return;
-    sendCommand(msg);
+    if (msg.startsWith('/')) msg = 'send ' + msg; // /home -> send /home（MCC 内部指令需 send 前缀才能进游戏）
+    sendCommand(msg, { fromChat: true });
     logChatInput.value = '';
   });
   logChatInput.addEventListener('keydown', (e) => {
@@ -944,19 +950,38 @@
   });
 
   // ---- 命令 ----
-  async function sendCommand(cmd) {
+  /**
+   * 发送指令到 MCC 控制台。
+   * @param {string} cmd 指令内容
+   * @param {object} [opts] fromChat=true 表示来自日志 tab 的发消息框：
+   *   结果显示在日志 tab、不进命令历史、发送成功后自动切「聊天」过滤
+   */
+  async function sendCommand(cmd, opts = {}) {
     if (!cmd || !currentInstance) return false;
-    commandResult.textContent = '发送中…';
-    commandResult.className = 'command-result';
+    const fromChat = opts.fromChat === true;
+    const resultEl = fromChat ? logChatResult : commandResult;
+    if (resultEl) {
+      resultEl.textContent = '发送中…';
+      resultEl.className = 'command-result';
+    }
     try {
       await api.command(currentInstance.daemonId, currentInstance.uuid, cmd);
-      commandResult.textContent = '已发送';
-      commandResult.className = 'command-result ok';
-      pushCommandHistory(cmd);
+      const running = String(currentInstance.status) === '3';
+      const okText = fromChat ? '已发送到游戏聊天' : '已发送';
+      if (resultEl) {
+        resultEl.textContent = running ? okText : okText + '（实例未运行，消息可能无法送达）';
+        resultEl.className = 'command-result' + (running ? ' ok' : '');
+      }
+      toast(running ? okText : okText + '（实例未运行）');
+      if (!fromChat) pushCommandHistory(cmd); // 聊天消息不进命令历史，避免消息与命令混杂
+      if (fromChat) setLogFilterMode('chat');  // 自动切到聊天页，让发送的消息回显可见
       return true;
     } catch (error) {
-      commandResult.textContent = '发送失败: ' + error.message;
-      commandResult.className = 'command-result err';
+      if (resultEl) {
+        resultEl.textContent = '发送失败: ' + error.message;
+        resultEl.className = 'command-result err';
+      }
+      toast('发送失败: ' + error.message, 'err');
       return false;
     }
   }
